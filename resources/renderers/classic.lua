@@ -164,7 +164,6 @@ function renderer:New(skin, settings)
 end
 
 function renderer:LoadSkin(skin)
-    self.Drag = nil;
     self.Skin = skin:copy(true);
     self.Skin.Color.BG = UINT_COLOR_TO_ARRAY(self.Skin.Color.BG);
     if (self.Settings.ReverseColors) then
@@ -187,15 +186,6 @@ function renderer:LoadSkin(skin)
 end
 
 function renderer:Destroy()
-    self.Drag = nil;
-    self.DragHitBox = nil;
-    self.Bar = nil;
-    self.BarRect = nil;
-    self.IconRect = nil;
-    self.Outline = nil;
-    self.OutlineRect = nil;
-    self.HitBoxes = T{};
-    self.Skin = nil;
 end
 
 function renderer:Begin()
