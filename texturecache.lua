@@ -42,12 +42,13 @@ function TextureCache:GetTexture(file)
         end
 
         local tx = self.ItemCache[itemId]
-        if tx then
-            return tx;
+        if tx ~= nil then
+            return tx or nil;
         end
 
         local item = AshitaCore:GetResourceManager():GetItemById(itemId);
         if (item == nil) then
+            self.ItemCache[itemId] = false;
             return;
         end
 
@@ -63,8 +64,11 @@ function TextureCache:GetTexture(file)
                 self.ItemCache[itemId] = tx;
                 return tx;
             end
+            self.ItemCache[itemId] = false;
             return;
         end
+        self.ItemCache[itemId] = false;
+        return;
     end
     
     if (string.sub(file, 1, 7) == 'STATUS:') then
@@ -74,12 +78,13 @@ function TextureCache:GetTexture(file)
         end
 
         local tx = self.StatusCache[statusId]
-        if tx then
-            return tx;
+        if tx ~= nil then
+            return tx or nil;
         end
         
         local status = AshitaCore:GetResourceManager():GetStatusIconByIndex(statusId);
         if (status == nil) then
+            self.StatusCache[statusId] = false;
             return;
         end
 
@@ -96,13 +101,16 @@ function TextureCache:GetTexture(file)
                 self.StatusCache[statusId] = tx;
                 return tx;
             end
+            self.StatusCache[statusId] = false;
             return;
         end
+        self.StatusCache[statusId] = false;
+        return;
     end
 
     local tx = self.ImageCache[file];
-    if tx then
-        return tx;
+    if tx ~= nil then
+        return tx or nil;
     end
 
     local path = GetImagePath(file);
@@ -119,9 +127,9 @@ function TextureCache:GetTexture(file)
                 self.ImageCache[file] = tx;
                 return tx;
             end
-            return;
         end
     end
+    self.ImageCache[file] = false;
 end
 
 return TextureCache;
