@@ -35,6 +35,65 @@ local actionMessages = T{
     Steps = T{ 519, 520, 521, 591 },
     Applied = T{ 127, 203, 236, 237, 268, 270, 271 },
 };
+local blueDebugEnabled = false;
+local blueDebugFile;
+local blueDebugPath;
+local blueDebugRecentUntil = 0;
+
+local function CloseBlueDebug()
+    if blueDebugFile then
+        blueDebugFile:close();
+        blueDebugFile = nil;
+    end
+    blueDebugEnabled = false;
+end
+
+local function WriteBlueDebug(text)
+    if blueDebugFile then
+        blueDebugFile:write(string.format('%s %s\n', os.date('%Y-%m-%d %H:%M:%S'), text));
+        blueDebugFile:flush();
+    end
+end
+
+local function HexString(data)
+    local bytes = {};
+    for i = 1,#data do
+        bytes[#bytes + 1] = string.format('%02X', string.byte(data, i));
+    end
+    return table.concat(bytes);
+end
+
+local function LogBlueAction(packet, rawData)
+    blueDebugRecentUntil = os.clock() + 2;
+    WriteBlueDebug(string.format('ACTION actor=%u type=%u spell=%u targets=%u raw=%s',
+        packet.UserId, packet.Type, packet.Id, #packet.Targets, HexString(rawData)));
+    for targetIndex,target in ipairs(packet.Targets) do
+        for actionIndex,action in ipairs(target.Actions) do
+            local additionalEffect = action.AdditionalEffect;
+            WriteBlueDebug(string.format(
+                'RESULT target_index=%u action_index=%u target=%u reaction=%u animation=%u effect=%u knockback=%u param=%u message=%u flags=%u additional=%s additional_damage=%u additional_param=%u additional_message=%u',
+                targetIndex, actionIndex, target.Id, action.Reaction, action.Animation, action.SpecialEffect,
+                action.Knockback, action.Param, action.Message, action.Flags,
+                additionalEffect and 'yes' or 'no',
+                additionalEffect and additionalEffect.Damage or 0,
+                additionalEffect and additionalEffect.Param or 0,
+                additionalEffect and additionalEffect.Message or 0));
+        end
+    end
+end
+
+local function LogBlueActionMessage(e)
+    WriteBlueDebug(string.format(
+        'MESSAGE actor=%u target=%u param1=%u param2=%u actor_index=%u target_index=%u message=%u raw=%s',
+        struct.unpack('L', e.data, 0x04 + 1),
+        struct.unpack('L', e.data, 0x08 + 1),
+        struct.unpack('L', e.data, 0x0C + 1),
+        struct.unpack('L', e.data, 0x10 + 1),
+        struct.unpack('H', e.data, 0x14 + 1),
+        struct.unpack('H', e.data, 0x16 + 1),
+        bit.band(struct.unpack('H', e.data, 0x18 + 1), 0x7FFF),
+        HexString(e.data)));
+end
 local dotPriority = T{
     [232] = 6,
     [25] = 5,
@@ -446,6 +505,13 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
 
     if (e.id == 0x028) then
         local packet = actionPacket:parse(e);
+        if blueDebugEnabled
+            and (packet.UserId == durations:GetDataTracker():GetPlayerId())
+            and (packet.Type == 4)
+            and (packet.Id >= 513)
+        then
+            LogBlueAction(packet, e.data_raw);
+        end
         local trackAction = (packet.UserId == durations:GetDataTracker():GetPlayerId());
         if (trackAction == false) then
             if (gSettings.Debuff.TrackMode == 'All Players') then
@@ -485,6 +551,9 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
     end
 
     if (e.id == 0x29) then
+        if blueDebugEnabled and (os.clock() <= blueDebugRecentUntil) then
+            LogBlueActionMessage(e);
+        end
         local messageId = bit.band(struct.unpack('H', e.data, 0x18 + 1), 0x7FFF);
         if (actionMessages.Death:contains(messageId)) then
             HandleEnemyDeath(struct.unpack('L', e.data, 0x08 + 1));
@@ -666,6 +735,33 @@ end
 
 
 local exports = {};
+
+function exports:ToggleBlueDebug()
+    if blueDebugEnabled then
+        CloseBlueDebug();
+        return false, blueDebugPath;
+    end
+
+    local installPath = AshitaCore:GetInstallPath();
+    local directory = string.format('%sconfig/addons/%s/', installPath, addon.name);
+    if not ashita.fs.exists(directory) then
+        directory = string.format('%saddons/%s/', installPath, addon.name);
+    end
+    blueDebugPath = directory .. 'blu-debug.log';
+    blueDebugFile = io.open(blueDebugPath, 'w');
+    if not blueDebugFile then
+        blueDebugPath = nil;
+        return nil, nil;
+    end
+
+    blueDebugEnabled = true;
+    WriteBlueDebug('START');
+    return true, blueDebugPath;
+end
+
+ashita.events.register('unload', 'debuff_tracker_bludebug_unload', function ()
+    CloseBlueDebug();
+end);
 
 local lastSetting;
 function exports:Tick()
