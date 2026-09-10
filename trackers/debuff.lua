@@ -94,18 +94,10 @@ local function GetBlueDebugTarget(targetId)
     local index = bit.band(targetId, 0x7FF);
     if entity:GetServerId(index) ~= targetId then
         index = 0;
-        for i = 0x001,0x3FF do
+        for i = 0x001,0x8FF do
             if entity:GetServerId(i) == targetId then
                 index = i;
                 break
-            end
-        end
-        if index == 0 then
-            for i = 0x700,0x8FF do
-                if entity:GetServerId(i) == targetId then
-                    index = i;
-                    break
-                end
             end
         end
     end
@@ -116,17 +108,29 @@ local function GetBlueDebugTarget(targetId)
     return entity:GetName(index), index;
 end
 
+local function GetBlueDebugEquipment()
+    local items = {};
+    for _,item in ipairs(durations:GetDataTracker():GetEquippedSet()) do
+        items[#items + 1] = string.format('%02u:%u', item.Slot, item.Id);
+    end
+    table.sort(items);
+    return table.concat(items, ',');
+end
+
 local function GetBlueDebugPlayerState()
     local memory = AshitaCore:GetMemoryManager();
     local player = memory:GetPlayer();
     local intBase = player:GetStat(4);
     local intModifier = player:GetStatModifier(4);
     return {
+        Time = os.clock(),
         TP = memory:GetParty():GetMemberTP(0),
         Level = player:GetMainJobLevel(),
+        BlueMagicSkill = player:GetCombatSkill(43):GetSkill(),
         IntBase = intBase,
         IntModifier = intModifier,
         IntTotal = intBase + intModifier,
+        Equipment = GetBlueDebugEquipment(),
     };
 end
 
@@ -161,21 +165,27 @@ local function LogBlueCastRequest(data)
     local check = blueDebugChecks[targetId];
     blueDebugCastContexts[spellId] = state;
     WriteBlueDebug(string.format(
-        'REQUEST spell=%u target=%u target_index=%u target_name=%q target_level=%d target_difficulty=%q target_condition=%q player_tp=%u player_level=%u player_int=%d int_base=%d int_modifier=%d raw=%s',
+        'REQUEST spell=%u target=%u target_index=%u target_name=%q target_level=%d target_difficulty=%q target_condition=%q player_tp=%u player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill=%u equipment=%q raw=%s',
         spellId, targetId, targetIndex, targetName, check and check.Level or -1,
         check and check.Difficulty or 'Unknown', check and check.Condition or 'Unknown',
-        state.TP, state.Level, state.IntTotal, state.IntBase, state.IntModifier, HexString(data)));
+        state.TP, state.Level, state.IntTotal, state.IntBase, state.IntModifier,
+        state.BlueMagicSkill, state.Equipment, HexString(data)));
 end
 
 local function LogBlueAction(packet, rawData)
     blueDebugRecentUntil = os.clock() + 2;
     local state = GetBlueDebugPlayerState();
     local request = blueDebugCastContexts[packet.Id];
+    local requestAge = request and (state.Time - request.Time) or -1;
+    if requestAge > 10 then
+        request = nil;
+        requestAge = -1;
+    end
     WriteBlueDebug(string.format(
-        'ACTION actor=%u type=%u spell=%u targets=%u player_tp=%u request_tp=%d player_level=%u player_int=%d int_base=%d int_modifier=%d raw=%s',
+        'ACTION actor=%u type=%u spell=%u targets=%u player_tp=%u request_tp=%d request_age=%.3f player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill=%u equipment=%q raw=%s',
         packet.UserId, packet.Type, packet.Id, #packet.Targets, state.TP,
-        request and request.TP or -1, state.Level, state.IntTotal, state.IntBase,
-        state.IntModifier, HexString(rawData)));
+        request and request.TP or -1, requestAge, state.Level, state.IntTotal, state.IntBase,
+        state.IntModifier, state.BlueMagicSkill, state.Equipment, HexString(rawData)));
     for targetIndex,target in ipairs(packet.Targets) do
         blueDebugTargets[target.Id] = true;
         local targetName, entityIndex = GetBlueDebugTarget(target.Id);
@@ -930,16 +940,23 @@ function exports:ToggleBlueDebug()
         string.format('%saddons/%s/', AshitaCore:GetInstallPath(), addon.name),
     };
     for _,directory in ipairs(directories) do
-        local suffix = 0;
-        repeat
+        for suffix = 0,99 do
             local name = suffix == 0
                 and string.format('blu-debug-%s.log', timestamp)
                 or string.format('blu-debug-%s-%u.log', timestamp, suffix);
             blueDebugPath = directory .. name;
-            suffix = suffix + 1;
-        until not ashita.fs.exists(blueDebugPath)
+            if not ashita.fs.exists(blueDebugPath) then
+                blueDebugFile = io.open(blueDebugPath, 'w');
+                if blueDebugFile then
+                    break
+                end
+            end
+        end
 
-        blueDebugFile = io.open(blueDebugPath, 'w');
+        if not blueDebugFile then
+            blueDebugPath = directory .. string.format('blu-debug-%s-overflow.log', timestamp);
+            blueDebugFile = io.open(blueDebugPath, 'w');
+        end
         if blueDebugFile then
             break
         end
@@ -956,7 +973,7 @@ function exports:ToggleBlueDebug()
     blueDebugCastContexts = {};
     blueDebugChecks = {};
     blueDebugEnabled = true;
-    WriteBlueDebug('START version=4');
+    WriteBlueDebug('START version=5');
     return true, blueDebugPath;
 end
 
