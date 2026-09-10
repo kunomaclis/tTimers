@@ -210,6 +210,16 @@ local function AddBlueDebugPending(targetId, statusId, spellId, castId, confirme
     for i = #pending,1,-1 do
         if (now - pending[i].Time) > 1200 then
             table.remove(pending, i);
+        elseif (pending[i].CastId == castId)
+            and (pending[i].SpellId == spellId)
+            and (pending[i].StatusId == statusId)
+        then
+            if confirmed and not pending[i].Confirmed then
+                pending[i].Confirmed = true;
+                pending[i].Time = now;
+                return true;
+            end
+            return false;
         end
     end
 
@@ -220,6 +230,7 @@ local function AddBlueDebugPending(targetId, statusId, spellId, castId, confirme
         StatusId = statusId,
         Confirmed = confirmed,
     };
+    return true;
 end
 
 local function GetBlueDebugTarget(targetId)
@@ -334,7 +345,13 @@ local function LogBlueAction(packet, rawData)
         request = nil;
         requestAge = -1;
     end
-    local castId = request and request.CastId or 0;
+    local castId;
+    if request then
+        castId = request.CastId;
+    else
+        blueDebugNextCastId = blueDebugNextCastId + 1;
+        castId = blueDebugNextCastId;
+    end
     local spellName = GetBlueDebugSpellName(packet.Id);
     WriteBlueDebug(string.format(
         'ACTION cast_id=%u actor=%u type=%u spell=%u spell_name=%q targets=%u player_tp=%u request_tp=%d request_age=%.3f player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill=%u equipment=%q',
@@ -367,11 +384,12 @@ local function LogBlueAction(packet, rawData)
 
             local applied = blueDebugAppliedMessages:contains(action.Message);
             if applied then
-                AddBlueDebugPending(target.Id, action.Param, packet.Id, castId, true, state.Time);
-                WriteBlueDebug(string.format(
-                    'LAND cast_id=%u spell=%u spell_name=%q target=%u target_name=%q status=%u status_name=%q message=%u',
-                    castId, packet.Id, spellName, target.Id, targetName, action.Param,
-                    GetBlueDebugStatusName(action.Param), action.Message));
+                if AddBlueDebugPending(target.Id, action.Param, packet.Id, castId, true, state.Time) then
+                    WriteBlueDebug(string.format(
+                        'LAND cast_id=%u spell=%u spell_name=%q target=%u target_name=%q status=%u status_name=%q message=%u',
+                        castId, packet.Id, spellName, target.Id, targetName, action.Param,
+                        GetBlueDebugStatusName(action.Param), action.Message));
+                end
             elseif action.Message == 75 then
                 WriteBlueDebug(string.format(
                     'NO_EFFECT cast_id=%u spell=%u spell_name=%q target=%u target_name=%q param=%u message=%u',
@@ -381,11 +399,12 @@ local function LogBlueAction(packet, rawData)
             if expectedStatuses and (action.Message ~= 75) and (action.Param > 0) then
                 for _,statusId in ipairs(expectedStatuses) do
                     if not applied or (statusId ~= action.Param) then
-                        AddBlueDebugPending(target.Id, statusId, packet.Id, castId, false, state.Time);
-                        WriteBlueDebug(string.format(
-                            'CANDIDATE cast_id=%u spell=%u spell_name=%q target=%u target_name=%q expected_status=%u status_name=%q',
-                            castId, packet.Id, spellName, target.Id, targetName, statusId,
-                            GetBlueDebugStatusName(statusId)));
+                        if AddBlueDebugPending(target.Id, statusId, packet.Id, castId, false, state.Time) then
+                            WriteBlueDebug(string.format(
+                                'CANDIDATE cast_id=%u spell=%u spell_name=%q target=%u target_name=%q expected_status=%u status_name=%q',
+                                castId, packet.Id, spellName, target.Id, targetName, statusId,
+                                GetBlueDebugStatusName(statusId)));
+                        end
                     end
                 end
             end
@@ -424,9 +443,12 @@ local function LogBlueExpiration(data, messageId)
         return;
     end
 
+    local now = os.clock();
     local matches = {};
     for i = #pending,1,-1 do
-        if pending[i].StatusId == statusId then
+        if (now - pending[i].Time) > 1200 then
+            table.remove(pending, i);
+        elseif pending[i].StatusId == statusId then
             matches[#matches + 1] = pending[i];
             table.remove(pending, i);
         end
@@ -434,12 +456,29 @@ local function LogBlueExpiration(data, messageId)
     if #pending == 0 then
         blueDebugPending[targetId] = nil;
     end
-    if #matches == 0 then
+    if (#matches == 0) and (#pending == 0) then
         return;
     end
 
-    local now = os.clock();
     local targetName, targetIndex = GetBlueDebugTarget(targetId);
+    if #matches == 0 then
+        local candidates = {};
+        for _,entry in ipairs(pending) do
+            candidates[#candidates + 1] = string.format('%u:%u:%.3f',
+                entry.CastId, entry.SpellId, now - entry.Time);
+        end
+        WriteBlueDebug(string.format(
+            'EXPIRE_UNMATCHED target=%u target_name=%q entity_index=%u status=%u status_name=%q message=%u pending=%q',
+            targetId, targetName, targetIndex, statusId, GetBlueDebugStatusName(statusId),
+            messageId, table.concat(candidates, ',')));
+        if not blueDebugRawExpirations[statusId] then
+            blueDebugRawExpirations[statusId] = true;
+            WriteBlueDebug(string.format('RAW_EXPIRE status=%u status_name=%q raw=%s',
+                statusId, GetBlueDebugStatusName(statusId), HexString(data)));
+        end
+        return;
+    end
+
     WriteBlueDebug(string.format(
         'EXPIRE target=%u target_name=%q entity_index=%u status=%u status_name=%q message=%u candidates=%u',
         targetId, targetName, targetIndex, statusId, GetBlueDebugStatusName(statusId),
@@ -495,6 +534,18 @@ local function LogBlueActionMessagePacket(data, messageId)
     elseif blueDebugTargets[targetId] then
         LogBlueActionMessage(data, messageId, 'tracked_target');
     end
+end
+
+local function LogBlueCastEvent(e)
+    LogBlueCastPacket(GetBlueDebugPacketData(e));
+end
+
+local function LogBlueActionEvent(packet, e)
+    LogBlueAction(packet, GetBlueDebugPacketData(e));
+end
+
+local function LogBlueActionMessageEvent(e, messageId)
+    LogBlueActionMessagePacket(GetBlueDebugPacketData(e), messageId);
 end
 
 local function ClearBlueDebugTarget(targetId)
@@ -904,7 +955,7 @@ ashita.events.register('packet_out', 'debuff_tracker_handleoutgoingpacket', func
         return;
     end
 
-    RunBlueDebug('cast request', LogBlueCastPacket, GetBlueDebugPacketData(e));
+    RunBlueDebug('cast request', LogBlueCastEvent, e);
 end);
 
 ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', function (e)
@@ -936,7 +987,7 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
             and (packet.Type == 4)
             and (packet.Id >= 513)
         then
-            RunBlueDebug('action packet', LogBlueAction, packet, GetBlueDebugPacketData(e));
+            RunBlueDebug('action packet', LogBlueActionEvent, packet, e);
         end
         local trackAction = (packet.UserId == durations:GetDataTracker():GetPlayerId());
         if (trackAction == false) then
@@ -980,8 +1031,7 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
         local data = e.data;
         local messageId = bit.band(struct.unpack('H', data, 0x18 + 1), 0x7FFF);
         if blueDebugEnabled then
-            RunBlueDebug('action message', LogBlueActionMessagePacket,
-                GetBlueDebugPacketData(e), messageId);
+            RunBlueDebug('action message', LogBlueActionMessageEvent, e, messageId);
         end
         if (actionMessages.Death:contains(messageId)) then
             local targetId = struct.unpack('L', e.data, 0x08 + 1);
