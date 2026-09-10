@@ -42,6 +42,28 @@ local blueDebugRecentUntil = 0;
 local blueDebugStartedAt = 0;
 local blueDebugTargets = {};
 local blueDebugCastContexts = {};
+local blueDebugChecks = {};
+local blueDebugCheckTypes = {
+    [0x40] = 'Too Weak',
+    [0x41] = 'Incredibly Easy Prey',
+    [0x42] = 'Easy Prey',
+    [0x43] = 'Decent Challenge',
+    [0x44] = 'Even Match',
+    [0x45] = 'Tough',
+    [0x46] = 'Very Tough',
+    [0x47] = 'Incredibly Tough',
+};
+local blueDebugCheckConditions = {
+    [0xAA] = 'High Evasion, High Defense',
+    [0xAB] = 'High Evasion',
+    [0xAC] = 'High Evasion, Low Defense',
+    [0xAD] = 'High Defense',
+    [0xAE] = 'Neutral Evasion and Defense',
+    [0xAF] = 'Low Defense',
+    [0xB0] = 'Low Evasion, High Defense',
+    [0xB1] = 'Low Evasion',
+    [0xB2] = 'Low Evasion, Low Defense',
+};
 
 local function CloseBlueDebug()
     if blueDebugFile then
@@ -108,16 +130,41 @@ local function GetBlueDebugPlayerState()
     };
 end
 
+local function LogBlueCheck(data, messageId)
+    local targetId = struct.unpack('L', data, 0x08 + 1);
+    local level = struct.unpack('L', data, 0x0C + 1);
+    local checkType = struct.unpack('L', data, 0x10 + 1);
+    local targetName, targetIndex = GetBlueDebugTarget(targetId);
+    local difficulty = blueDebugCheckTypes[checkType] or 'Unknown';
+    local condition = blueDebugCheckConditions[messageId] or 'Impossible to Gauge';
+    if level > 0x7FFFFFFF then
+        level = level - 0x100000000;
+    end
+
+    blueDebugTargets[targetId] = true;
+    blueDebugChecks[targetId] = {
+        Level = level,
+        Difficulty = difficulty,
+        Condition = condition,
+    };
+    WriteBlueDebug(string.format(
+        'CHECK target=%u target_index=%u target_name=%q level=%d difficulty=%q condition=%q check_type=%u message=%u raw=%s',
+        targetId, targetIndex, targetName, level, difficulty, condition, checkType,
+        messageId, HexString(data)));
+end
+
 local function LogBlueCastRequest(data)
     local targetId = struct.unpack('L', data, 0x04 + 1);
     local spellId = struct.unpack('H', data, 0x0C + 1);
     local targetName, targetIndex = GetBlueDebugTarget(targetId);
     local state = GetBlueDebugPlayerState();
+    local check = blueDebugChecks[targetId];
     blueDebugCastContexts[spellId] = state;
     WriteBlueDebug(string.format(
-        'REQUEST spell=%u target=%u target_index=%u target_name=%q player_tp=%u player_level=%u player_int=%d int_base=%d int_modifier=%d raw=%s',
-        spellId, targetId, targetIndex, targetName, state.TP, state.Level, state.IntTotal,
-        state.IntBase, state.IntModifier, HexString(data)));
+        'REQUEST spell=%u target=%u target_index=%u target_name=%q target_level=%d target_difficulty=%q target_condition=%q player_tp=%u player_level=%u player_int=%d int_base=%d int_modifier=%d raw=%s',
+        spellId, targetId, targetIndex, targetName, check and check.Level or -1,
+        check and check.Difficulty or 'Unknown', check and check.Condition or 'Unknown',
+        state.TP, state.Level, state.IntTotal, state.IntBase, state.IntModifier, HexString(data)));
 end
 
 local function LogBlueAction(packet, rawData)
@@ -132,12 +179,15 @@ local function LogBlueAction(packet, rawData)
     for targetIndex,target in ipairs(packet.Targets) do
         blueDebugTargets[target.Id] = true;
         local targetName, entityIndex = GetBlueDebugTarget(target.Id);
+        local check = blueDebugChecks[target.Id];
         for actionIndex,action in ipairs(target.Actions) do
             local additionalEffect = action.AdditionalEffect;
             WriteBlueDebug(string.format(
-                'RESULT packet_target_index=%u action_index=%u target=%u entity_index=%u target_name=%q reaction=%u animation=%u effect=%u knockback=%u param=%u message=%u flags=%u additional=%s additional_damage=%u additional_param=%u additional_message=%u',
-                targetIndex, actionIndex, target.Id, entityIndex, targetName, action.Reaction,
-                action.Animation, action.SpecialEffect, action.Knockback, action.Param, action.Message, action.Flags,
+                'RESULT packet_target_index=%u action_index=%u target=%u entity_index=%u target_name=%q target_level=%d target_difficulty=%q target_condition=%q reaction=%u animation=%u effect=%u knockback=%u param=%u message=%u flags=%u additional=%s additional_damage=%u additional_param=%u additional_message=%u',
+                targetIndex, actionIndex, target.Id, entityIndex, targetName,
+                check and check.Level or -1, check and check.Difficulty or 'Unknown',
+                check and check.Condition or 'Unknown', action.Reaction, action.Animation,
+                action.SpecialEffect, action.Knockback, action.Param, action.Message, action.Flags,
                 additionalEffect and 'yes' or 'no',
                 additionalEffect and additionalEffect.Damage or 0,
                 additionalEffect and additionalEffect.Param or 0,
@@ -178,6 +228,11 @@ local function LogBlueExpiration(data, messageId)
         struct.unpack('L', data, 0x0C + 1),
         struct.unpack('L', data, 0x10 + 1),
         HexString(data)));
+end
+
+local function ClearBlueDebugTarget(targetId)
+    blueDebugTargets[targetId] = nil;
+    blueDebugChecks[targetId] = nil;
 end
 local dotPriority = T{
     [232] = 6,
@@ -594,17 +649,22 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
     if blueDebugEnabled and (e.id == 0x00A) then
         blueDebugTargets = {};
         blueDebugCastContexts = {};
+        blueDebugChecks = {};
         WriteBlueDebug('ZONE_RESET');
     end
 
     if (e.id == 0x00E) then
         local flags = struct.unpack('B', e.data, 0x0A + 1);
         if (bit.band(flags, 0x20) == 0x20) and (CheckDistance(struct.unpack('H', e.data, 0x08 + 1))) then
-            HandleEnemyDeath(struct.unpack('L', e.data, 0x04 + 1));
+            local targetId = struct.unpack('L', e.data, 0x04 + 1);
+            HandleEnemyDeath(targetId);
+            ClearBlueDebugTarget(targetId);
         elseif (bit.band(flags, 0x04) == 0x04) then
             local hp = struct.unpack('B', e.data, 0x1E + 1);
             if (hp == 0) then
-                HandleEnemyDeath(struct.unpack('L', e.data, 0x04 + 1));
+                local targetId = struct.unpack('L', e.data, 0x04 + 1);
+                HandleEnemyDeath(targetId);
+                ClearBlueDebugTarget(targetId);
             end
         end
     end
@@ -661,7 +721,12 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
         local messageId = bit.band(struct.unpack('H', rawData, 0x18 + 1), 0x7FFF);
         if blueDebugEnabled then
             local targetId = struct.unpack('L', rawData, 0x08 + 1);
-            if actionMessages.Expired:contains(messageId) then
+            local checkType = struct.unpack('L', rawData, 0x10 + 1);
+            if (messageId == 0xF9)
+                or (blueDebugCheckConditions[messageId] and blueDebugCheckTypes[checkType])
+            then
+                LogBlueCheck(rawData, messageId);
+            elseif actionMessages.Expired:contains(messageId) then
                 LogBlueExpiration(rawData, messageId);
             elseif os.clock() <= blueDebugRecentUntil then
                 LogBlueActionMessage(rawData, messageId, 'recent');
@@ -670,7 +735,9 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
             end
         end
         if (actionMessages.Death:contains(messageId)) then
-            HandleEnemyDeath(struct.unpack('L', e.data, 0x08 + 1));
+            local targetId = struct.unpack('L', e.data, 0x08 + 1);
+            HandleEnemyDeath(targetId);
+            ClearBlueDebugTarget(targetId);
         end
         if (actionMessages.Expired:contains(messageId)) then
             HandleDebuffExpiration(struct.unpack('H', e.data, 0x0C + 1), struct.unpack('L', e.data, 0x08 + 1));
@@ -887,8 +954,9 @@ function exports:ToggleBlueDebug()
     blueDebugRecentUntil = 0;
     blueDebugTargets = {};
     blueDebugCastContexts = {};
+    blueDebugChecks = {};
     blueDebugEnabled = true;
-    WriteBlueDebug('START version=3');
+    WriteBlueDebug('START version=4');
     return true, blueDebugPath;
 end
 
