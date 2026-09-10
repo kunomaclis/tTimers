@@ -73,7 +73,11 @@ end);
 
 ashita.events.register('command', 'command_cb', function (e)
     local args = e.command:args();
-    if (#args == 0 or string.lower(args[1]) ~= '/tt') then
+    if (#args == 0) then
+        return;
+    end
+    local command = string.lower(args[1]);
+    if (command ~= '/tt') and (command ~= '/ttblu') then
         return;
     end
     e.blocked = true;
@@ -191,12 +195,12 @@ ashita.events.register('command', 'command_cb', function (e)
             return;
         end
 
-        print(chat.header('tTimers') .. chat.message('Command Descriptions:'));
-        print(chat.header('tTimers') .. chat.color1(2, '/tt') .. chat.message(' - Opens configuration menu.'));
-        print(chat.header('tTimers') .. chat.color1(2, '/tt reposition') .. chat.message(' - Starts reposition mode, which shows debug timers to fill all panels and provides draggable handles to move them.'));
-        print(chat.header('tTimers') .. chat.color1(2, '/tt lock') .. chat.message(' - Ends repositioning mode and saves positions for the current character.'));
-        print(chat.header('tTimers') .. chat.color1(2, '/tt custom [label] [duration]') .. chat.message(' - Adds a custom timer.  Duration can be specified in number of seconds or using s,m, or h suffixes with or without decimal places(30m, 1h, 10.5m, etc).'));
-        print(chat.header('tTimers') .. chat.color1(2, '/tt stop [label]') .. chat.message(' - Deletes a custom timer.'));
-        print(chat.header('tTimers') .. chat.color1(2, '/tt bludebug') .. chat.message(' - Starts or stops Blue Magic packet capture.'));
+        print(chat.header(addon.name) .. chat.message('Command Descriptions:'));
+        print(chat.header(addon.name) .. chat.color1(2, '/ttblu') .. chat.message(' - Opens configuration menu.'));
+        print(chat.header(addon.name) .. chat.color1(2, '/ttblu reposition') .. chat.message(' - Starts reposition mode, which shows debug timers to fill all panels and provides draggable handles to move them.'));
+        print(chat.header(addon.name) .. chat.color1(2, '/ttblu lock') .. chat.message(' - Ends repositioning mode and saves positions for the current character.'));
+        print(chat.header(addon.name) .. chat.color1(2, '/ttblu custom [label] [duration]') .. chat.message(' - Adds a custom timer.  Duration can be specified in number of seconds or using s,m, or h suffixes with or without decimal places(30m, 1h, 10.5m, etc).'));
+        print(chat.header(addon.name) .. chat.color1(2, '/ttblu stop [label]') .. chat.message(' - Deletes a custom timer.'));
+        print(chat.header(addon.name) .. chat.color1(2, '/ttblu bludebug') .. chat.message(' - Starts or stops Blue Magic packet capture.'));
     end
 end);
