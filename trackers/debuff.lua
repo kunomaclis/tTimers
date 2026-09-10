@@ -65,12 +65,21 @@ local blueDebugCheckConditions = {
     [0xB2] = 'Low Evasion, Low Defense',
 };
 
+local function ClearBlueDebugContext()
+    blueDebugRecentUntil = 0;
+    blueDebugTargets = {};
+    blueDebugCastContexts = {};
+    blueDebugChecks = {};
+end
+
 local function CloseBlueDebug()
-    if blueDebugFile then
-        blueDebugFile:close();
-        blueDebugFile = nil;
-    end
+    local file = blueDebugFile;
+    blueDebugFile = nil;
     blueDebugEnabled = false;
+    ClearBlueDebugContext();
+    if file then
+        pcall(file.close, file);
+    end
 end
 
 local function WriteBlueDebug(text)
@@ -79,6 +88,20 @@ local function WriteBlueDebug(text)
             os.date('%Y-%m-%d %H:%M:%S'), os.clock() - blueDebugStartedAt, text));
         blueDebugFile:flush();
     end
+end
+
+local function RunBlueDebug(context, callback, ...)
+    local success, err = pcall(callback, ...);
+    if success then
+        return true;
+    end
+
+    local path = blueDebugPath;
+    pcall(WriteBlueDebug, string.format('ERROR context=%q detail=%q', context, tostring(err)));
+    CloseBlueDebug();
+    Error(string.format('BLU debug capture stopped after %s failed: $H%s$R (%s)',
+        context, tostring(err), tostring(path)));
+    return false;
 end
 
 local function HexString(data)
@@ -172,6 +195,15 @@ local function LogBlueCastRequest(data)
         state.BlueMagicSkill, state.Equipment, HexString(data)));
 end
 
+local function LogBlueCastPacket(data)
+    if (#data >= 0x0E)
+        and (struct.unpack('H', data, 0x0A + 1) == 3)
+        and (struct.unpack('H', data, 0x0C + 1) >= 513)
+    then
+        LogBlueCastRequest(data);
+    end
+end
+
 local function LogBlueAction(packet, rawData)
     blueDebugRecentUntil = os.clock() + 2;
     local state = GetBlueDebugPlayerState();
@@ -238,6 +270,22 @@ local function LogBlueExpiration(data, messageId)
         struct.unpack('L', data, 0x0C + 1),
         struct.unpack('L', data, 0x10 + 1),
         HexString(data)));
+end
+
+local function LogBlueActionMessagePacket(data, messageId)
+    local targetId = struct.unpack('L', data, 0x08 + 1);
+    local checkType = struct.unpack('L', data, 0x10 + 1);
+    if (messageId == 0xF9)
+        or (blueDebugCheckConditions[messageId] and blueDebugCheckTypes[checkType])
+    then
+        LogBlueCheck(data, messageId);
+    elseif actionMessages.Expired:contains(messageId) and blueDebugTargets[targetId] then
+        LogBlueExpiration(data, messageId);
+    elseif os.clock() <= blueDebugRecentUntil then
+        LogBlueActionMessage(data, messageId, 'recent');
+    elseif blueDebugTargets[targetId] then
+        LogBlueActionMessage(data, messageId, 'tracked_target');
+    end
 end
 
 local function ClearBlueDebugTarget(targetId)
@@ -646,21 +694,13 @@ ashita.events.register('packet_out', 'debuff_tracker_handleoutgoingpacket', func
         return;
     end
 
-    local data = e.data;
-    if (#data >= 0x0E)
-        and (struct.unpack('H', data, 0x0A + 1) == 3)
-        and (struct.unpack('H', data, 0x0C + 1) >= 513)
-    then
-        LogBlueCastRequest(data);
-    end
+    RunBlueDebug('cast request', LogBlueCastPacket, e.data);
 end);
 
 ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', function (e)
     if blueDebugEnabled and (e.id == 0x00A) then
-        blueDebugTargets = {};
-        blueDebugCastContexts = {};
-        blueDebugChecks = {};
-        WriteBlueDebug('ZONE_RESET');
+        ClearBlueDebugContext();
+        RunBlueDebug('zone reset', WriteBlueDebug, 'ZONE_RESET');
     end
 
     if (e.id == 0x00E) then
@@ -686,7 +726,7 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
             and (packet.Type == 4)
             and (packet.Id >= 513)
         then
-            LogBlueAction(packet, e.data);
+            RunBlueDebug('action packet', LogBlueAction, packet, e.data);
         end
         local trackAction = (packet.UserId == durations:GetDataTracker():GetPlayerId());
         if (trackAction == false) then
@@ -730,19 +770,7 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
         local data = e.data;
         local messageId = bit.band(struct.unpack('H', data, 0x18 + 1), 0x7FFF);
         if blueDebugEnabled then
-            local targetId = struct.unpack('L', data, 0x08 + 1);
-            local checkType = struct.unpack('L', data, 0x10 + 1);
-            if (messageId == 0xF9)
-                or (blueDebugCheckConditions[messageId] and blueDebugCheckTypes[checkType])
-            then
-                LogBlueCheck(data, messageId);
-            elseif actionMessages.Expired:contains(messageId) then
-                LogBlueExpiration(data, messageId);
-            elseif os.clock() <= blueDebugRecentUntil then
-                LogBlueActionMessage(data, messageId, 'recent');
-            elseif blueDebugTargets[targetId] then
-                LogBlueActionMessage(data, messageId, 'tracked_target');
-            end
+            RunBlueDebug('action message', LogBlueActionMessagePacket, data, messageId);
         end
         if (actionMessages.Death:contains(messageId)) then
             local targetId = struct.unpack('L', e.data, 0x08 + 1);
@@ -929,9 +957,10 @@ local exports = {};
 
 function exports:ToggleBlueDebug()
     if blueDebugEnabled then
-        WriteBlueDebug('STOP');
+        pcall(WriteBlueDebug, 'STOP');
+        local path = blueDebugPath;
         CloseBlueDebug();
-        return false, blueDebugPath;
+        return false, path;
     end
 
     local timestamp = os.date('%Y%m%d-%H%M%S');
@@ -969,12 +998,14 @@ function exports:ToggleBlueDebug()
     end
 
     blueDebugStartedAt = os.clock();
-    blueDebugRecentUntil = 0;
-    blueDebugTargets = {};
-    blueDebugCastContexts = {};
-    blueDebugChecks = {};
+    ClearBlueDebugContext();
     blueDebugEnabled = true;
-    WriteBlueDebug('START version=6');
+    local success, err = pcall(WriteBlueDebug, 'START version=7');
+    if not success then
+        local path = blueDebugPath;
+        CloseBlueDebug();
+        return nil, string.format('%s (%s)', path, tostring(err));
+    end
     return true, blueDebugPath;
 end
 
