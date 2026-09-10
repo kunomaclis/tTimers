@@ -5,7 +5,25 @@ Displays time remaining on buffs and debuffs you've cast, as well as the recast 
 This fork adds renderer stability fixes and opt-in Blue Magic debuff tracking for HorizonXI. Blue Magic behavior is still being measured because Horizon uses both explicit application messages and silent debuff riders, with some durations differing from upstream LandSandBoat assumptions.
 
 ## Installation
-Download the release zip(**on the right sidebar, do not click code..download as zip**). Extract directly to your Ashita directory(the folder with ashita-cli.exe in it!). Everything should fall into place. Load the addon with **/addon load tTimers**.
+### Users
+Download the named `tTimers-v*.zip` asset from the [Releases page](https://github.com/kunomaclis/tTimers/releases). Do not use GitHub's **Download ZIP** or **Source code (zip)** because those archives do not include the required `gdifonts` submodule.
+
+Unzip the asset and place the included `tTimers` folder in your Ashita `addons` directory. Load it with **/addon load tTimers**.
+
+### Developers
+Clone the repository with its submodule:
+
+```bash
+git clone --recursive https://github.com/kunomaclis/tTimers.git
+cd tTimers
+git config submodule.recurse true
+```
+
+For an existing clone with an empty `gdifonts` directory:
+
+```bash
+git submodule update --init --recursive
+```
 
 ## Commands
 
@@ -40,6 +58,8 @@ Want to help improve Blue Magic timers?
 4. Share the log from `config/addons/tTimers/logs/`.
 
 Capture continues across zones. Timers beginning with **~** are experimental guesses shown only while capture is active.
+
+Shared logs include your character name, level, INT, base Blue Magic skill, and equipped item IDs at cast time.
 
 ## Contributors
 - Thorny — original author
