@@ -39,6 +39,8 @@ local blueDebugEnabled = false;
 local blueDebugFile;
 local blueDebugPath;
 local blueDebugRecentUntil = 0;
+local blueDebugStartedAt = 0;
+local blueDebugTargets = {};
 
 local function CloseBlueDebug()
     if blueDebugFile then
@@ -50,7 +52,8 @@ end
 
 local function WriteBlueDebug(text)
     if blueDebugFile then
-        blueDebugFile:write(string.format('%s %s\n', os.date('%Y-%m-%d %H:%M:%S'), text));
+        blueDebugFile:write(string.format('%s +%.3f %s\n',
+            os.date('%Y-%m-%d %H:%M:%S'), os.clock() - blueDebugStartedAt, text));
         blueDebugFile:flush();
     end
 end
@@ -68,6 +71,7 @@ local function LogBlueAction(packet, rawData)
     WriteBlueDebug(string.format('ACTION actor=%u type=%u spell=%u targets=%u raw=%s',
         packet.UserId, packet.Type, packet.Id, #packet.Targets, HexString(rawData)));
     for targetIndex,target in ipairs(packet.Targets) do
+        blueDebugTargets[target.Id] = true;
         for actionIndex,action in ipairs(target.Actions) do
             local additionalEffect = action.AdditionalEffect;
             WriteBlueDebug(string.format(
@@ -82,16 +86,28 @@ local function LogBlueAction(packet, rawData)
     end
 end
 
-local function LogBlueActionMessage(e)
+local function LogBlueActionMessage(e, messageId, reason)
     WriteBlueDebug(string.format(
-        'MESSAGE actor=%u target=%u param1=%u param2=%u actor_index=%u target_index=%u message=%u raw=%s',
+        'MESSAGE reason=%s actor=%u target=%u param1=%u param2=%u actor_index=%u target_index=%u message=%u raw=%s',
+        reason,
         struct.unpack('L', e.data, 0x04 + 1),
         struct.unpack('L', e.data, 0x08 + 1),
         struct.unpack('L', e.data, 0x0C + 1),
         struct.unpack('L', e.data, 0x10 + 1),
         struct.unpack('H', e.data, 0x14 + 1),
         struct.unpack('H', e.data, 0x16 + 1),
-        bit.band(struct.unpack('H', e.data, 0x18 + 1), 0x7FFF),
+        messageId,
+        HexString(e.data)));
+end
+
+local function LogBlueExpiration(e, messageId)
+    WriteBlueDebug(string.format(
+        'EXPIRE target=%u status=%u message=%u param1=%u param2=%u raw=%s',
+        struct.unpack('L', e.data, 0x08 + 1),
+        struct.unpack('H', e.data, 0x0C + 1),
+        messageId,
+        struct.unpack('L', e.data, 0x0C + 1),
+        struct.unpack('L', e.data, 0x10 + 1),
         HexString(e.data)));
 end
 local dotPriority = T{
@@ -551,10 +567,17 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
     end
 
     if (e.id == 0x29) then
-        if blueDebugEnabled and (os.clock() <= blueDebugRecentUntil) then
-            LogBlueActionMessage(e);
-        end
         local messageId = bit.band(struct.unpack('H', e.data, 0x18 + 1), 0x7FFF);
+        if blueDebugEnabled then
+            local targetId = struct.unpack('L', e.data, 0x08 + 1);
+            if actionMessages.Expired:contains(messageId) then
+                LogBlueExpiration(e, messageId);
+            elseif os.clock() <= blueDebugRecentUntil then
+                LogBlueActionMessage(e, messageId, 'recent');
+            elseif blueDebugTargets[targetId] then
+                LogBlueActionMessage(e, messageId, 'tracked_target');
+            end
+        end
         if (actionMessages.Death:contains(messageId)) then
             HandleEnemyDeath(struct.unpack('L', e.data, 0x08 + 1));
         end
@@ -738,6 +761,7 @@ local exports = {};
 
 function exports:ToggleBlueDebug()
     if blueDebugEnabled then
+        WriteBlueDebug('STOP');
         CloseBlueDebug();
         return false, blueDebugPath;
     end
@@ -754,8 +778,11 @@ function exports:ToggleBlueDebug()
         return nil, nil;
     end
 
+    blueDebugStartedAt = os.clock();
+    blueDebugRecentUntil = 0;
+    blueDebugTargets = {};
     blueDebugEnabled = true;
-    WriteBlueDebug('START');
+    WriteBlueDebug('START version=2');
     return true, blueDebugPath;
 end
 
