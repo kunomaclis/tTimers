@@ -108,6 +108,7 @@ local function D3D_COLOR(input)
 end
 local keys = T{ 'R', 'G', 'B', 'A' };
 local function D3D_COLOR_BLEND(startColor, endColor, percent)
+    percent = math.max(0, math.min(1, percent));
     local input = {};
     for _,key in pairs(keys) do
         input[key] = math.min(255, math.ceil((startColor[key] * (1 - percent)) + (endColor[key] * percent)));
@@ -207,7 +208,8 @@ function renderer:GetColor(renderData)
         end
     elseif (duration < colorSettings.MidThreshold) then
         if (colorSettings.Blend) then
-            local percent = ((duration - colorSettings.LowThreshold) / colorSettings.LowThreshold);            
+            local range = colorSettings.MidThreshold - colorSettings.LowThreshold;
+            local percent = range > 0 and ((duration - colorSettings.LowThreshold) / range) or 1;
             if self.Settings.Countdown then
                 return D3D_COLOR_BLEND(colorSettings.Low, colorSettings.Middle, percent);
             else
@@ -218,7 +220,8 @@ function renderer:GetColor(renderData)
         end
     elseif (duration < colorSettings.HighThreshold) then
         if (colorSettings.Blend) then
-            local percent = ((duration - colorSettings.MidThreshold) / colorSettings.MidThreshold);
+            local range = colorSettings.HighThreshold - colorSettings.MidThreshold;
+            local percent = range > 0 and ((duration - colorSettings.MidThreshold) / range) or 1;
             if self.Settings.Countdown then
                 return D3D_COLOR_BLEND(colorSettings.Middle, colorSettings.High, percent);
             else
@@ -321,7 +324,7 @@ function renderer:DrawTimers(sprite, position, renderDataContainer)
             end
 
             local label = renderData.Local.label;
-            label:set_font_height(labelLayout.font_height * scale);
+            label:set_font_height(math.floor((labelLayout.font_height * scale) + 0.5));
             label:set_text(renderData.Label);
             label:set_position_x(position.X + (barLayout.NameOffsetX * scale));
             label:set_position_y(position.Y + (barLayout.NameOffsetY * scale));
@@ -335,7 +338,7 @@ function renderer:DrawTimers(sprite, position, renderDataContainer)
             end
 
             local duration = renderData.Local.duration;
-            duration:set_font_height(labelLayout.font_height * scale);
+            duration:set_font_height(math.floor((labelLayout.font_height * scale) + 0.5));
             duration:set_text(TimeToString(renderData.Duration, showTenths));
             duration:set_position_x(position.X + ((barLayout.Width - barLayout.TimerOffsetX) * scale))
             duration:set_position_y(position.Y + (barLayout.TimerOffsetY * scale));

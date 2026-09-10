@@ -427,7 +427,7 @@ local function HandleBuffTimers(packet)
                         local timeDiff = now - target.Creation;
                         if (timeDiff < 2) then
                             UpdateDuration(buffData.BuffId, target.Expiration, buff.Expiration);
-                            if pendingRoll.BuffId == buff.ID then
+                            if pendingRoll.Buff == buff.ID then
                                 pendingRoll.Duration = (target.Expiration - pendingRoll.Time);
                             end
                         end

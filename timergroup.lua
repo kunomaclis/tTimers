@@ -245,7 +245,9 @@ function TimerGroup:UpdateSettings(newSettings, force)
             Scale = newSettings.Scale,
             ShowTenths = newSettings.ShowTenths,
         };
-        if (type(self.TimerRenderer.LoadSkin) == 'function') and (newSettings.Skin[newSettings.Renderer] ~= self.Settings.Skin) then
+        local skinChanged = newSettings.Skin[newSettings.Renderer] ~= self.Settings.Skin[newSettings.Renderer];
+        local colorsChanged = newSettings.ReverseColors ~= self.Settings.ReverseColors;
+        if (type(self.TimerRenderer.LoadSkin) == 'function') and (skinChanged or colorsChanged) then
             local skinName = newSettings.Skin[newSettings.Renderer];
             local skinPath = GetFilePath(string.format('skins/%s/%s.lua', newSettings.Renderer, skinName));
             local skin = LoadFile_s(skinPath);
