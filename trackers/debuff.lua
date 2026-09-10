@@ -303,7 +303,10 @@ local function LogBlueDebugSummary(reason)
     end
     for castId = 1,blueDebugNextCastId do
         local stats = blueDebugCastStats[castId];
-        if stats then
+        if stats and ((stats.Lands > 0) or (stats.Candidates > 0)
+            or (stats.NoEffect > 0) or (stats.Durations > 0)
+            or (stats.ClearedTargets > 0) or ((unresolved[castId] or 0) > 0))
+        then
             WriteBlueDebug(string.format(
                 'CAST_SUMMARY reason=%s cast_id=%u spell=%u spell_name=%q targets=%u lands=%u candidates=%u no_effect=%u durations=%u cleared_targets=%u unresolved=%u',
                 reason, castId, stats.SpellId, stats.SpellName,
@@ -977,13 +980,21 @@ local function HandleStep(targetId, actionId)
     RecordDebuff(targetId, 'Ability', actionId, stepBuffIds[actionId], 60 + mods);
 end
 
+local function LogBlueTimerStart(uncertain, spellId, targetId, buffId, duration, messageId)
+    WriteBlueDebug(string.format(
+        'TIMER_START confidence=%s spell=%u spell_name=%q target=%u status=%u status_name=%q duration=%.3f message=%u',
+        uncertain and 'assumed' or 'confirmed', spellId, GetBlueDebugSpellName(spellId),
+        targetId, buffId, GetBlueDebugStatusName(buffId), duration, messageId));
+end
+
 local function HandleSpellComplete(packet)
+    local localPlayer = packet.UserId == durations:GetDataTracker():GetPlayerId();
     for _,target in ipairs(packet.Targets) do
         for _,action in ipairs(target.Actions) do
             local messageId = action.Message;
             if (actionMessages.Applied:contains(messageId)) or (actionMessages.Damage:contains(messageId)) then
                 local duration, buffId, uncertain = durations:GetSpellDuration(packet.Id, target.Id);
-                if duration and (not uncertain or blueDebugEnabled) then
+                if duration and (not uncertain or (blueDebugEnabled and localPlayer)) then
                     if type(buffId) == 'table' then
                         buffId = buffId[1];
                     end
@@ -994,12 +1005,9 @@ local function HandleSpellComplete(packet)
                     else
                         RecordDebuff(target.Id, 'Spell', packet.Id, buffId, duration, uncertain);
                     end
-                    if blueDebugEnabled and (packet.Id >= 513) then
-                        RunBlueDebug('timer start', WriteBlueDebug, string.format(
-                            'TIMER_START confidence=%s spell=%u spell_name=%q target=%u status=%u status_name=%q duration=%.3f message=%u',
-                            uncertain and 'assumed' or 'confirmed', packet.Id,
-                            GetBlueDebugSpellName(packet.Id), target.Id, buffId,
-                            GetBlueDebugStatusName(buffId), duration, messageId));
+                    if blueDebugEnabled and localPlayer and (packet.Id >= 513) then
+                        RunBlueDebug('timer start', LogBlueTimerStart, uncertain,
+                            packet.Id, target.Id, buffId, duration, messageId);
                     end
                 end
             end
@@ -1407,6 +1415,11 @@ function exports:ToggleBlueDebug()
 end
 
 ashita.events.register('unload', 'debuff_tracker_bludebug_unload', function ()
+    if blueDebugEnabled then
+        pcall(LogBlueDebugSummary, 'unload');
+        pcall(WriteBlueDebug, 'STOP reason=unload');
+        ClearUncertainDebuffs();
+    end
     CloseBlueDebug();
 end);
 
