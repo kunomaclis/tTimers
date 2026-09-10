@@ -32,6 +32,7 @@ local trackers      = T{
     { Name='Recast', Tracker=require('trackers.recast') },
     { Name='Custom',  Tracker=customTracker },
 }
+Message('BLU debug capture build v6 loaded.');
 
 local sprite = ffi.new('ID3DXSprite*[1]');
 if (ffi.C.D3DXCreateSprite(d3d.get_device(), sprite) == ffi.C.S_OK) then
@@ -176,10 +177,12 @@ ashita.events.register('command', 'command_cb', function (e)
             return;
         end
 
-        if (args[2] == 'bludebug') then
-            local enabled, path = debuffTracker:ToggleBlueDebug();
-            if enabled == nil then
-                Error('Unable to open the BLU debug log.');
+        if (string.lower(args[2]) == 'bludebug') then
+            local success, enabled, path = pcall(debuffTracker.ToggleBlueDebug, debuffTracker);
+            if not success then
+                Error(string.format('BLU debug capture failed: $H%s', tostring(enabled)));
+            elseif enabled == nil then
+                Error(string.format('Unable to open the BLU debug log: $H%s', tostring(path)));
             elseif enabled then
                 Message(string.format('BLU debug capture started: $H%s', path));
             else

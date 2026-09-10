@@ -935,36 +935,37 @@ function exports:ToggleBlueDebug()
     end
 
     local timestamp = os.date('%Y%m%d-%H%M%S');
-    local directories = T{
-        string.format('%sconfig/addons/%s/', AshitaCore:GetInstallPath(), addon.name),
-        string.format('%saddons/%s/', AshitaCore:GetInstallPath(), addon.name),
-    };
-    for _,directory in ipairs(directories) do
-        for suffix = 0,99 do
-            local name = suffix == 0
-                and string.format('blu-debug-%s.log', timestamp)
-                or string.format('blu-debug-%s-%u.log', timestamp, suffix);
-            blueDebugPath = directory .. name;
-            if not ashita.fs.exists(blueDebugPath) then
-                blueDebugFile = io.open(blueDebugPath, 'w');
-                if blueDebugFile then
-                    break
-                end
-            end
+    local directory = string.format('%sconfig/addons/%s/logs/', AshitaCore:GetInstallPath(), addon.name);
+    if not ashita.fs.exists(directory) then
+        local createDirectory = ashita.fs.create_directory or ashita.fs.create_dir;
+        if type(createDirectory) == 'function' then
+            createDirectory(directory);
         end
+    end
+    if not ashita.fs.exists(directory) then
+        return nil, directory;
+    end
 
-        if not blueDebugFile then
-            blueDebugPath = directory .. string.format('blu-debug-%s-overflow.log', timestamp);
+    for suffix = 0,99 do
+        local name = suffix == 0
+            and string.format('blu-debug-%s.log', timestamp)
+            or string.format('blu-debug-%s-%u.log', timestamp, suffix);
+        blueDebugPath = directory .. name;
+        if not ashita.fs.exists(blueDebugPath) then
             blueDebugFile = io.open(blueDebugPath, 'w');
-        end
-        if blueDebugFile then
-            break
+            if blueDebugFile then
+                break
+            end
         end
     end
 
     if not blueDebugFile then
-        blueDebugPath = nil;
-        return nil, nil;
+        blueDebugPath = directory .. string.format('blu-debug-%s-overflow.log', timestamp);
+        blueDebugFile = io.open(blueDebugPath, 'w');
+    end
+
+    if not blueDebugFile then
+        return nil, blueDebugPath;
     end
 
     blueDebugStartedAt = os.clock();
@@ -973,7 +974,7 @@ function exports:ToggleBlueDebug()
     blueDebugCastContexts = {};
     blueDebugChecks = {};
     blueDebugEnabled = true;
-    WriteBlueDebug('START version=5');
+    WriteBlueDebug('START version=6');
     return true, blueDebugPath;
 end
 
