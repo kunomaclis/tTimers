@@ -646,7 +646,7 @@ ashita.events.register('packet_out', 'debuff_tracker_handleoutgoingpacket', func
         return;
     end
 
-    local data = e.data_raw or e.data;
+    local data = e.data;
     if (#data >= 0x0E)
         and (struct.unpack('H', data, 0x0A + 1) == 3)
         and (struct.unpack('H', data, 0x0C + 1) >= 513)
@@ -686,7 +686,7 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
             and (packet.Type == 4)
             and (packet.Id >= 513)
         then
-            LogBlueAction(packet, e.data_raw);
+            LogBlueAction(packet, e.data);
         end
         local trackAction = (packet.UserId == durations:GetDataTracker():GetPlayerId());
         if (trackAction == false) then
@@ -727,21 +727,21 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
     end
 
     if (e.id == 0x29) then
-        local rawData = e.data_raw or e.data;
-        local messageId = bit.band(struct.unpack('H', rawData, 0x18 + 1), 0x7FFF);
+        local data = e.data;
+        local messageId = bit.band(struct.unpack('H', data, 0x18 + 1), 0x7FFF);
         if blueDebugEnabled then
-            local targetId = struct.unpack('L', rawData, 0x08 + 1);
-            local checkType = struct.unpack('L', rawData, 0x10 + 1);
+            local targetId = struct.unpack('L', data, 0x08 + 1);
+            local checkType = struct.unpack('L', data, 0x10 + 1);
             if (messageId == 0xF9)
                 or (blueDebugCheckConditions[messageId] and blueDebugCheckTypes[checkType])
             then
-                LogBlueCheck(rawData, messageId);
+                LogBlueCheck(data, messageId);
             elseif actionMessages.Expired:contains(messageId) then
-                LogBlueExpiration(rawData, messageId);
+                LogBlueExpiration(data, messageId);
             elseif os.clock() <= blueDebugRecentUntil then
-                LogBlueActionMessage(rawData, messageId, 'recent');
+                LogBlueActionMessage(data, messageId, 'recent');
             elseif blueDebugTargets[targetId] then
-                LogBlueActionMessage(rawData, messageId, 'tracked_target');
+                LogBlueActionMessage(data, messageId, 'tracked_target');
             end
         end
         if (actionMessages.Death:contains(messageId)) then
