@@ -41,6 +41,7 @@ local blueDebugPath;
 local blueDebugRecentUntil = 0;
 local blueDebugStartedAt = 0;
 local blueDebugTargets = {};
+local blueDebugCastContexts = {};
 
 local function CloseBlueDebug()
     if blueDebugFile then
@@ -66,49 +67,117 @@ local function HexString(data)
     return table.concat(bytes);
 end
 
+local function GetBlueDebugTarget(targetId)
+    local entity = AshitaCore:GetMemoryManager():GetEntity();
+    local index = bit.band(targetId, 0x7FF);
+    if entity:GetServerId(index) ~= targetId then
+        index = 0;
+        for i = 0x001,0x3FF do
+            if entity:GetServerId(i) == targetId then
+                index = i;
+                break
+            end
+        end
+        if index == 0 then
+            for i = 0x700,0x8FF do
+                if entity:GetServerId(i) == targetId then
+                    index = i;
+                    break
+                end
+            end
+        end
+    end
+
+    if index == 0 then
+        return 'Unknown', 0;
+    end
+    return entity:GetName(index), index;
+end
+
+local function GetBlueDebugPlayerState()
+    local memory = AshitaCore:GetMemoryManager();
+    local player = memory:GetPlayer();
+    local intBase = player:GetStat(4);
+    local intModifier = player:GetStatModifier(4);
+    return {
+        TP = memory:GetParty():GetMemberTP(0),
+        Level = player:GetMainJobLevel(),
+        IntBase = intBase,
+        IntModifier = intModifier,
+        IntTotal = intBase + intModifier,
+    };
+end
+
+local function LogBlueCastRequest(data)
+    local targetId = struct.unpack('L', data, 0x04 + 1);
+    local spellId = struct.unpack('H', data, 0x0C + 1);
+    local targetName, targetIndex = GetBlueDebugTarget(targetId);
+    local state = GetBlueDebugPlayerState();
+    blueDebugCastContexts[spellId] = state;
+    WriteBlueDebug(string.format(
+        'REQUEST spell=%u target=%u target_index=%u target_name=%q player_tp=%u player_level=%u player_int=%d int_base=%d int_modifier=%d raw=%s',
+        spellId, targetId, targetIndex, targetName, state.TP, state.Level, state.IntTotal,
+        state.IntBase, state.IntModifier, HexString(data)));
+end
+
 local function LogBlueAction(packet, rawData)
     blueDebugRecentUntil = os.clock() + 2;
-    WriteBlueDebug(string.format('ACTION actor=%u type=%u spell=%u targets=%u raw=%s',
-        packet.UserId, packet.Type, packet.Id, #packet.Targets, HexString(rawData)));
+    local state = GetBlueDebugPlayerState();
+    local request = blueDebugCastContexts[packet.Id];
+    WriteBlueDebug(string.format(
+        'ACTION actor=%u type=%u spell=%u targets=%u player_tp=%u request_tp=%d player_level=%u player_int=%d int_base=%d int_modifier=%d raw=%s',
+        packet.UserId, packet.Type, packet.Id, #packet.Targets, state.TP,
+        request and request.TP or -1, state.Level, state.IntTotal, state.IntBase,
+        state.IntModifier, HexString(rawData)));
     for targetIndex,target in ipairs(packet.Targets) do
         blueDebugTargets[target.Id] = true;
+        local targetName, entityIndex = GetBlueDebugTarget(target.Id);
         for actionIndex,action in ipairs(target.Actions) do
             local additionalEffect = action.AdditionalEffect;
             WriteBlueDebug(string.format(
-                'RESULT target_index=%u action_index=%u target=%u reaction=%u animation=%u effect=%u knockback=%u param=%u message=%u flags=%u additional=%s additional_damage=%u additional_param=%u additional_message=%u',
-                targetIndex, actionIndex, target.Id, action.Reaction, action.Animation, action.SpecialEffect,
-                action.Knockback, action.Param, action.Message, action.Flags,
+                'RESULT packet_target_index=%u action_index=%u target=%u entity_index=%u target_name=%q reaction=%u animation=%u effect=%u knockback=%u param=%u message=%u flags=%u additional=%s additional_damage=%u additional_param=%u additional_message=%u',
+                targetIndex, actionIndex, target.Id, entityIndex, targetName, action.Reaction,
+                action.Animation, action.SpecialEffect, action.Knockback, action.Param, action.Message, action.Flags,
                 additionalEffect and 'yes' or 'no',
                 additionalEffect and additionalEffect.Damage or 0,
                 additionalEffect and additionalEffect.Param or 0,
                 additionalEffect and additionalEffect.Message or 0));
         end
     end
+    blueDebugCastContexts[packet.Id] = nil;
 end
 
-local function LogBlueActionMessage(e, messageId, reason)
+local function LogBlueActionMessage(data, messageId, reason)
+    local targetId = struct.unpack('L', data, 0x08 + 1);
+    local targetName, targetIndex = GetBlueDebugTarget(targetId);
     WriteBlueDebug(string.format(
-        'MESSAGE reason=%s actor=%u target=%u param1=%u param2=%u actor_index=%u target_index=%u message=%u raw=%s',
+        'MESSAGE reason=%s actor=%u target=%u target_name=%q entity_index=%u param1=%u param2=%u actor_index=%u target_index=%u message=%u raw=%s',
         reason,
-        struct.unpack('L', e.data, 0x04 + 1),
-        struct.unpack('L', e.data, 0x08 + 1),
-        struct.unpack('L', e.data, 0x0C + 1),
-        struct.unpack('L', e.data, 0x10 + 1),
-        struct.unpack('H', e.data, 0x14 + 1),
-        struct.unpack('H', e.data, 0x16 + 1),
+        struct.unpack('L', data, 0x04 + 1),
+        targetId,
+        targetName,
+        targetIndex,
+        struct.unpack('L', data, 0x0C + 1),
+        struct.unpack('L', data, 0x10 + 1),
+        struct.unpack('H', data, 0x14 + 1),
+        struct.unpack('H', data, 0x16 + 1),
         messageId,
-        HexString(e.data)));
+        HexString(data)));
 end
 
-local function LogBlueExpiration(e, messageId)
+local function LogBlueExpiration(data, messageId)
+    local targetId = struct.unpack('L', data, 0x08 + 1);
+    local targetName, targetIndex = GetBlueDebugTarget(targetId);
     WriteBlueDebug(string.format(
-        'EXPIRE target=%u status=%u message=%u param1=%u param2=%u raw=%s',
-        struct.unpack('L', e.data, 0x08 + 1),
-        struct.unpack('H', e.data, 0x0C + 1),
+        'EXPIRE target=%u target_name=%q entity_index=%u status=%u message=%u param1=%u param2=%u raw=%s',
+        targetId,
+        targetName,
+        targetIndex,
+        struct.unpack('H', data, 0x0C + 1),
         messageId,
-        struct.unpack('L', e.data, 0x0C + 1),
-        struct.unpack('L', e.data, 0x10 + 1),
-        HexString(e.data)));
+        struct.unpack('L', data, 0x0C + 1),
+        struct.unpack('L', data, 0x10 + 1),
+        HexString(data)));
 end
 local dotPriority = T{
     [232] = 6,
@@ -506,7 +575,28 @@ local function CheckDistance(index)
         return true;
     end
 end
+
+ashita.events.register('packet_out', 'debuff_tracker_handleoutgoingpacket', function (e)
+    if not blueDebugEnabled or (e.id ~= 0x01A) then
+        return;
+    end
+
+    local data = e.data_raw or e.data;
+    if (#data >= 0x0E)
+        and (struct.unpack('H', data, 0x0A + 1) == 3)
+        and (struct.unpack('H', data, 0x0C + 1) >= 513)
+    then
+        LogBlueCastRequest(data);
+    end
+end);
+
 ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', function (e)
+    if blueDebugEnabled and (e.id == 0x00A) then
+        blueDebugTargets = {};
+        blueDebugCastContexts = {};
+        WriteBlueDebug('ZONE_RESET');
+    end
+
     if (e.id == 0x00E) then
         local flags = struct.unpack('B', e.data, 0x0A + 1);
         if (bit.band(flags, 0x20) == 0x20) and (CheckDistance(struct.unpack('H', e.data, 0x08 + 1))) then
@@ -567,15 +657,16 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
     end
 
     if (e.id == 0x29) then
-        local messageId = bit.band(struct.unpack('H', e.data, 0x18 + 1), 0x7FFF);
+        local rawData = e.data_raw or e.data;
+        local messageId = bit.band(struct.unpack('H', rawData, 0x18 + 1), 0x7FFF);
         if blueDebugEnabled then
-            local targetId = struct.unpack('L', e.data, 0x08 + 1);
+            local targetId = struct.unpack('L', rawData, 0x08 + 1);
             if actionMessages.Expired:contains(messageId) then
-                LogBlueExpiration(e, messageId);
+                LogBlueExpiration(rawData, messageId);
             elseif os.clock() <= blueDebugRecentUntil then
-                LogBlueActionMessage(e, messageId, 'recent');
+                LogBlueActionMessage(rawData, messageId, 'recent');
             elseif blueDebugTargets[targetId] then
-                LogBlueActionMessage(e, messageId, 'tracked_target');
+                LogBlueActionMessage(rawData, messageId, 'tracked_target');
             end
         end
         if (actionMessages.Death:contains(messageId)) then
@@ -766,13 +857,27 @@ function exports:ToggleBlueDebug()
         return false, blueDebugPath;
     end
 
-    local installPath = AshitaCore:GetInstallPath();
-    local directory = string.format('%sconfig/addons/%s/', installPath, addon.name);
-    if not ashita.fs.exists(directory) then
-        directory = string.format('%saddons/%s/', installPath, addon.name);
+    local timestamp = os.date('%Y%m%d-%H%M%S');
+    local directories = T{
+        string.format('%sconfig/addons/%s/', AshitaCore:GetInstallPath(), addon.name),
+        string.format('%saddons/%s/', AshitaCore:GetInstallPath(), addon.name),
+    };
+    for _,directory in ipairs(directories) do
+        local suffix = 0;
+        repeat
+            local name = suffix == 0
+                and string.format('blu-debug-%s.log', timestamp)
+                or string.format('blu-debug-%s-%u.log', timestamp, suffix);
+            blueDebugPath = directory .. name;
+            suffix = suffix + 1;
+        until not ashita.fs.exists(blueDebugPath)
+
+        blueDebugFile = io.open(blueDebugPath, 'w');
+        if blueDebugFile then
+            break
+        end
     end
-    blueDebugPath = directory .. 'blu-debug.log';
-    blueDebugFile = io.open(blueDebugPath, 'w');
+
     if not blueDebugFile then
         blueDebugPath = nil;
         return nil, nil;
@@ -781,8 +886,9 @@ function exports:ToggleBlueDebug()
     blueDebugStartedAt = os.clock();
     blueDebugRecentUntil = 0;
     blueDebugTargets = {};
+    blueDebugCastContexts = {};
     blueDebugEnabled = true;
-    WriteBlueDebug('START version=2');
+    WriteBlueDebug('START version=3');
     return true, blueDebugPath;
 end
 
