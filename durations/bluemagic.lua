@@ -221,6 +221,30 @@ local function Initialize(tracker, buffer)
         return CalculateBlueMagicDuration(180, true, true), 604;        
     end
 
+    buffer[536] = function(targetId)
+        return 60, 3, true;
+    end
+
+    buffer[537] = function(targetId)
+        return 60, 138;
+    end
+
+    buffer[561] = function(targetId)
+        return 180, 149;
+    end
+
+    buffer[572] = function(targetId)
+        return 30, 140;
+    end
+
+    buffer[584] = function(targetId)
+        return 60, 2;
+    end
+
+    buffer[606] = function(targetId)
+        return 30, 136;
+    end
+
     --[[DEBUFFS : Many are not clear on land or not from packet, others lack data.  Filled in the ones wiki knew.
     Left this commented by default.
 

@@ -31,9 +31,9 @@ local abilityTypes = T{ 6, 14, 15 };
 local actionMessages = T{
     Death = T{ 6, 20, 113, 406, 605, 646 },
     Expired = T{ 64, 204, 206, 350, 351 },
-    Damage = T{ 2, 110, 252, 317 },
+    Damage = T{ 2, 110, 252, 264, 317 },
     Steps = T{ 519, 520, 521, 591 },
-    Applied = T{ 127, 203, 236, 237, 268, 270, 271 },
+    Applied = T{ 127, 203, 236, 237, 268, 270, 271, 277 },
 };
 local blueDebugEnabled = false;
 local blueDebugFile;
@@ -47,6 +47,7 @@ local blueDebugPending = {};
 local blueDebugRawActions = {};
 local blueDebugRawExpirations = {};
 local blueDebugRawMessages = {};
+local blueDebugCastStats = {};
 local blueDebugLastRequestSignature;
 local blueDebugLastRequestAt = 0;
 local blueDebugNextCastId = 0;
@@ -129,6 +130,7 @@ local function ClearBlueDebugContext(resetCapture)
     blueDebugCastContexts = {};
     blueDebugChecks = {};
     blueDebugPending = {};
+    blueDebugCastStats = {};
     blueDebugLastRequestSignature = nil;
     blueDebugLastRequestAt = 0;
     if resetCapture then
@@ -252,6 +254,89 @@ local function GetBlueDebugTarget(targetId)
     return entity:GetName(index), index;
 end
 
+local function GetBlueDebugTargetSafe(targetId)
+    local success, name, index = pcall(GetBlueDebugTarget, targetId);
+    if success then
+        return name, index;
+    end
+    return 'Unknown', 0;
+end
+
+local function GetBlueDebugCastStats(castId, spellId)
+    local stats = blueDebugCastStats[castId];
+    if not stats then
+        stats = {
+            SpellId = spellId,
+            SpellName = GetBlueDebugSpellName(spellId),
+            Targets = 0,
+            Lands = 0,
+            Candidates = 0,
+            NoEffect = 0,
+            Durations = 0,
+            ClearedTargets = 0,
+        };
+        blueDebugCastStats[castId] = stats;
+    end
+    return stats;
+end
+
+local function LogBlueDebugSummary(reason)
+    local unresolved = {};
+    local targetIds = {};
+    for targetId,_ in pairs(blueDebugPending) do
+        targetIds[#targetIds + 1] = targetId;
+    end
+    table.sort(targetIds);
+    local now = os.clock();
+    for _,targetId in ipairs(targetIds) do
+        local pending = blueDebugPending[targetId];
+        local entries = {};
+        for _,entry in ipairs(pending) do
+            unresolved[entry.CastId] = (unresolved[entry.CastId] or 0) + 1;
+            entries[#entries + 1] = string.format('%u:%u:%u:%.3f',
+                entry.CastId, entry.SpellId, entry.StatusId, now - entry.Time);
+        end
+        local targetName, targetIndex = GetBlueDebugTargetSafe(targetId);
+        WriteBlueDebug(string.format(
+            'UNRESOLVED reason=%s target=%u target_name=%q entity_index=%u pending=%q',
+            reason, targetId, targetName, targetIndex, table.concat(entries, ',')));
+    end
+    for castId = 1,blueDebugNextCastId do
+        local stats = blueDebugCastStats[castId];
+        if stats then
+            WriteBlueDebug(string.format(
+                'CAST_SUMMARY reason=%s cast_id=%u spell=%u spell_name=%q targets=%u lands=%u candidates=%u no_effect=%u durations=%u cleared_targets=%u unresolved=%u',
+                reason, castId, stats.SpellId, stats.SpellName,
+                stats.Targets, stats.Lands, stats.Candidates, stats.NoEffect,
+                stats.Durations, stats.ClearedTargets, unresolved[castId] or 0));
+        end
+    end
+end
+
+local function LogBlueDebugTargetClear(targetId, reason)
+    local pending = blueDebugPending[targetId];
+    if not pending then
+        return;
+    end
+    local targetName, targetIndex = GetBlueDebugTargetSafe(targetId);
+    local casts = {};
+    for _,entry in ipairs(pending) do
+        casts[entry.CastId] = true;
+    end
+    local castIds = {};
+    for castId,_ in pairs(casts) do
+        castIds[#castIds + 1] = castId;
+        local stats = blueDebugCastStats[castId];
+        if stats then
+            stats.ClearedTargets = stats.ClearedTargets + 1;
+        end
+    end
+    table.sort(castIds);
+    WriteBlueDebug(string.format(
+        'TARGET_CLEARED reason=%s target=%u target_name=%q entity_index=%u pending=%u casts=%q',
+        reason, targetId, targetName, targetIndex, #pending, table.concat(castIds, ',')));
+end
+
 local function GetBlueDebugEquipment()
     local items = {};
     for _,item in ipairs(durations:GetDataTracker():GetEquippedSet()) do
@@ -319,6 +404,7 @@ local function LogBlueCastRequest(data)
     state.CastId = blueDebugNextCastId;
     state.TargetId = targetId;
     blueDebugCastContexts[spellId] = state;
+    GetBlueDebugCastStats(state.CastId, spellId);
     WriteBlueDebug(string.format(
         'REQUEST cast_id=%u spell=%u spell_name=%q target=%u target_index=%u target_name=%q target_level=%d target_difficulty=%q target_condition=%q player_tp=%u player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill=%u equipment=%q',
         state.CastId, spellId, GetBlueDebugSpellName(spellId), targetId, targetIndex, targetName, check and check.Level or -1,
@@ -353,6 +439,8 @@ local function LogBlueAction(packet, rawData)
         castId = blueDebugNextCastId;
     end
     local spellName = GetBlueDebugSpellName(packet.Id);
+    local castStats = GetBlueDebugCastStats(castId, packet.Id);
+    castStats.Targets = #packet.Targets;
     WriteBlueDebug(string.format(
         'ACTION cast_id=%u actor=%u type=%u spell=%u spell_name=%q targets=%u player_tp=%u request_tp=%d request_age=%.3f player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill=%u equipment=%q',
         castId, packet.UserId, packet.Type, packet.Id, spellName, #packet.Targets, state.TP,
@@ -385,12 +473,14 @@ local function LogBlueAction(packet, rawData)
             local applied = blueDebugAppliedMessages:contains(action.Message);
             if applied then
                 if AddBlueDebugPending(target.Id, action.Param, packet.Id, castId, true, state.Time) then
+                    castStats.Lands = castStats.Lands + 1;
                     WriteBlueDebug(string.format(
                         'LAND cast_id=%u spell=%u spell_name=%q target=%u target_name=%q status=%u status_name=%q message=%u',
                         castId, packet.Id, spellName, target.Id, targetName, action.Param,
                         GetBlueDebugStatusName(action.Param), action.Message));
                 end
             elseif action.Message == 75 then
+                castStats.NoEffect = castStats.NoEffect + 1;
                 WriteBlueDebug(string.format(
                     'NO_EFFECT cast_id=%u spell=%u spell_name=%q target=%u target_name=%q param=%u message=%u',
                     castId, packet.Id, spellName, target.Id, targetName, action.Param, action.Message));
@@ -400,6 +490,7 @@ local function LogBlueAction(packet, rawData)
                 for _,statusId in ipairs(expectedStatuses) do
                     if not applied or (statusId ~= action.Param) then
                         if AddBlueDebugPending(target.Id, statusId, packet.Id, castId, false, state.Time) then
+                            castStats.Candidates = castStats.Candidates + 1;
                             WriteBlueDebug(string.format(
                                 'CANDIDATE cast_id=%u spell=%u spell_name=%q target=%u target_name=%q expected_status=%u status_name=%q',
                                 castId, packet.Id, spellName, target.Id, targetName, statusId,
@@ -512,6 +603,12 @@ local function LogBlueExpiration(data, messageId)
             targetId, targetName, statusId, GetBlueDebugStatusName(statusId),
             table.concat(candidates, ',')));
     end
+    if selected then
+        local stats = blueDebugCastStats[selected.CastId];
+        if stats then
+            stats.Durations = stats.Durations + 1;
+        end
+    end
 
     if not blueDebugRawExpirations[statusId] then
         blueDebugRawExpirations[statusId] = true;
@@ -548,7 +645,10 @@ local function LogBlueActionMessageEvent(e, messageId)
     LogBlueActionMessagePacket(GetBlueDebugPacketData(e), messageId);
 end
 
-local function ClearBlueDebugTarget(targetId)
+local function ClearBlueDebugTarget(targetId, reason)
+    if blueDebugEnabled and reason then
+        RunBlueDebug('target clear', LogBlueDebugTargetClear, targetId, reason);
+    end
     blueDebugTargets[targetId] = nil;
     blueDebugChecks[targetId] = nil;
     blueDebugPending[targetId] = nil;
@@ -759,8 +859,16 @@ local function MonsterIdToName(id)
     end
 end
 
-local function RecordDebuff(targetId, actionType, actionId, buffId, duration)
-    local playerTable = ClearConflicts(targetId, buffId);
+local function RecordDebuff(targetId, actionType, actionId, buffId, duration, uncertain)
+    local playerTable = buffsByTarget[targetId];
+    if uncertain then
+        if not playerTable then
+            playerTable = T{};
+            buffsByTarget[targetId] = playerTable;
+        end
+    else
+        playerTable = ClearConflicts(targetId, buffId);
+    end
     local key = string.format('%s:%u', actionType, actionId);
 
     local actionTable = buffsByAction[key];
@@ -769,9 +877,13 @@ local function RecordDebuff(targetId, actionType, actionId, buffId, duration)
         actionTable.ActionType = actionType;
         actionTable.ActionId = actionId;
         actionTable.BuffId = buffId;
+        actionTable.Uncertain = uncertain;
         actionTable.Key = key;
         actionTable.Targets = T{};
         GetActionName(actionTable);
+        if uncertain then
+            actionTable.Name = '~' .. actionTable.Name;
+        end
         GetActionIcon(actionTable);
         buffsByAction[key] = actionTable;
     end
@@ -870,8 +982,8 @@ local function HandleSpellComplete(packet)
         for _,action in ipairs(target.Actions) do
             local messageId = action.Message;
             if (actionMessages.Applied:contains(messageId)) or (actionMessages.Damage:contains(messageId)) then
-                local duration, buffId = durations:GetSpellDuration(packet.Id, target.Id);
-                if duration then
+                local duration, buffId, uncertain = durations:GetSpellDuration(packet.Id, target.Id);
+                if duration and (not uncertain or blueDebugEnabled) then
                     if type(buffId) == 'table' then
                         buffId = buffId[1];
                     end
@@ -880,7 +992,14 @@ local function HandleSpellComplete(packet)
                     if dotPrio then
                         HandleDiaBio(target.Id, 'Spell', packet.Id, buffId, duration);
                     else
-                        RecordDebuff(target.Id, 'Spell', packet.Id, buffId, duration);
+                        RecordDebuff(target.Id, 'Spell', packet.Id, buffId, duration, uncertain);
+                    end
+                    if blueDebugEnabled and (packet.Id >= 513) then
+                        RunBlueDebug('timer start', WriteBlueDebug, string.format(
+                            'TIMER_START confidence=%s spell=%u spell_name=%q target=%u status=%u status_name=%q duration=%.3f message=%u',
+                            uncertain and 'assumed' or 'confirmed', packet.Id,
+                            GetBlueDebugSpellName(packet.Id), target.Id, buffId,
+                            GetBlueDebugStatusName(buffId), duration, messageId));
                     end
                 end
             end
@@ -943,6 +1062,17 @@ local function HandleEnemyDeath(targetId)
     end
 end
 
+local function ClearUncertainDebuffs()
+    for _,buffData in pairs(buffsByAction) do
+        if buffData.Uncertain then
+            for _,target in pairs(buffData.Targets) do
+                target.Delete = true;
+            end
+            rebuildTimers = true;
+        end
+    end
+end
+
 local function CheckDistance(index)
     local distance = AshitaCore:GetMemoryManager():GetEntity():GetDistance(index);
     if (distance ~= 0) and (distance < 1225) then
@@ -960,8 +1090,12 @@ end);
 
 ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', function (e)
     if blueDebugEnabled and (e.id == 0x00A) then
-        ClearBlueDebugContext();
-        RunBlueDebug('zone reset', WriteBlueDebug, 'ZONE_RESET');
+        RunBlueDebug('zone summary', LogBlueDebugSummary, 'zone');
+        if blueDebugEnabled then
+            RunBlueDebug('zone reset', WriteBlueDebug, 'ZONE_RESET');
+            ClearUncertainDebuffs();
+            ClearBlueDebugContext();
+        end
     end
 
     if (e.id == 0x00E) then
@@ -969,13 +1103,13 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
         if (bit.band(flags, 0x20) == 0x20) and (CheckDistance(struct.unpack('H', e.data, 0x08 + 1))) then
             local targetId = struct.unpack('L', e.data, 0x04 + 1);
             HandleEnemyDeath(targetId);
-            ClearBlueDebugTarget(targetId);
+            ClearBlueDebugTarget(targetId, 'entity_removed');
         elseif (bit.band(flags, 0x04) == 0x04) then
             local hp = struct.unpack('B', e.data, 0x1E + 1);
             if (hp == 0) then
                 local targetId = struct.unpack('L', e.data, 0x04 + 1);
                 HandleEnemyDeath(targetId);
-                ClearBlueDebugTarget(targetId);
+                ClearBlueDebugTarget(targetId, 'hp_zero');
             end
         end
     end
@@ -1036,7 +1170,7 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
         if (actionMessages.Death:contains(messageId)) then
             local targetId = struct.unpack('L', e.data, 0x08 + 1);
             HandleEnemyDeath(targetId);
-            ClearBlueDebugTarget(targetId);
+            ClearBlueDebugTarget(targetId, 'death_message');
         end
         if (actionMessages.Expired:contains(messageId)) then
             HandleDebuffExpiration(struct.unpack('H', e.data, 0x0C + 1), struct.unpack('L', e.data, 0x08 + 1));
@@ -1218,7 +1352,9 @@ local exports = {};
 
 function exports:ToggleBlueDebug()
     if blueDebugEnabled then
+        pcall(LogBlueDebugSummary, 'stop');
         pcall(WriteBlueDebug, 'STOP');
+        ClearUncertainDebuffs();
         local path = blueDebugPath;
         CloseBlueDebug();
         return false, path;
@@ -1261,7 +1397,7 @@ function exports:ToggleBlueDebug()
     blueDebugStartedAt = os.clock();
     ClearBlueDebugContext(true);
     blueDebugEnabled = true;
-    local success, err = pcall(WriteBlueDebug, 'START version=8');
+    local success, err = pcall(WriteBlueDebug, 'START version=9');
     if not success then
         local path = blueDebugPath;
         CloseBlueDebug();

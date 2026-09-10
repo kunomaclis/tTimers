@@ -32,7 +32,7 @@ local trackers      = T{
     { Name='Recast', Tracker=require('trackers.recast') },
     { Name='Custom',  Tracker=customTracker },
 }
-Message('BLU debug capture build v8 loaded.');
+Message('BLU debug capture build v9 loaded.');
 
 local sprite = ffi.new('ID3DXSprite*[1]');
 if (ffi.C.D3DXCreateSprite(d3d.get_device(), sprite) == ffi.C.S_OK) then
