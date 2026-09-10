@@ -32,22 +32,14 @@ Enter a specific time in the future in this format HH:MM:SS. Example:
 Starts or stops Blue Magic packet capture and opt-in experimental Blue Magic timers.
 
 ## Blue Magic Debug Capture
-Blue Magic uses two observable behaviors on HorizonXI:
+Want to help improve Blue Magic timers?
 
-- Confirmed timers start when Horizon explicitly reports that a debuff landed.
-- Experimental timers start from a successful damage result when the associated debuff rider is silent.
+1. Run **/tt bludebug** when you start playing.
+2. Cast Blue Magic normally. Using `/check` on test targets helps.
+3. Run **/tt bludebug** again before quitting.
+4. Share the log from `config/addons/tTimers/logs/`.
 
-Experimental timer names begin with **~** because damage does not guarantee that the rider passed its separate resistance check. They are created only for the local player's casts and only while **/tt bludebug** is active. Wear-off messages, target death, entity removal, zoning, or stopping capture clear them.
-
-Current experimental timers include Head Butt, Ice Break, Wild Oats, Battle Dance, Terror Touch, Pinecone Bomb, Sprout Smack, Queasyshroom, Feather Storm, and Poison Breath.
-
-Capture logs are written to:
-
-`config/addons/tTimers/logs/`
-
-One capture file can remain active across multiple zones. Zoning writes a summary, clears zone-specific correlation state, and continues in the same file. Run **/tt bludebug** again at the end of the session to write the final summary and close the file. Normal addon unload also closes an active capture.
-
-The diagnostic records Blue Magic action results, wear-off messages, `/check` results, base Blue Magic skill, INT, TP, and equipped item IDs. This data is used to validate Horizon-specific status IDs, duration models, and silent-rider false-positive rates.
+Capture continues across zones. Timers beginning with **~** are experimental guesses shown only while capture is active.
 
 ## Contributors
 - Thorny — original author
