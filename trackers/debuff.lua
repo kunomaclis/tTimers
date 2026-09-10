@@ -51,6 +51,7 @@ local blueDebugCastStats = {};
 local blueDebugLastRequestSignature;
 local blueDebugLastRequestAt = 0;
 local blueDebugNextCastId = 0;
+local ClearUncertainDebuffs;
 local blueDebugAppliedMessages = T{ 236, 271, 277 };
 local blueDebugExpectedStatuses = {
     [515] = T{ 136 },
@@ -167,6 +168,9 @@ local function RunBlueDebug(context, callback, ...)
 
     local path = blueDebugPath;
     pcall(WriteBlueDebug, string.format('ERROR context=%q detail=%q', context, tostring(err)));
+    if ClearUncertainDebuffs then
+        pcall(ClearUncertainDebuffs);
+    end
     CloseBlueDebug();
     Error(string.format('BLU debug capture stopped after %s failed: $H%s$R (%s)',
         context, tostring(err), tostring(path)));
@@ -354,11 +358,13 @@ local function GetBlueDebugPlayerState()
     local player = memory:GetPlayer();
     local intBase = player:GetStat(4);
     local intModifier = player:GetStatModifier(4);
+    local blueMagicSkill = player:GetCombatSkill(43);
     return {
         Time = os.clock(),
         TP = memory:GetParty():GetMemberTP(0),
         Level = player:GetMainJobLevel(),
-        BlueMagicSkill = player:GetCombatSkill(43):GetSkill(),
+        BlueMagicSkill = blueMagicSkill:GetSkill(),
+        BlueMagicSkillCapped = blueMagicSkill:IsCapped(),
         IntBase = intBase,
         IntModifier = intModifier,
         IntTotal = intBase + intModifier,
@@ -409,11 +415,11 @@ local function LogBlueCastRequest(data)
     blueDebugCastContexts[spellId] = state;
     GetBlueDebugCastStats(state.CastId, spellId);
     WriteBlueDebug(string.format(
-        'REQUEST cast_id=%u spell=%u spell_name=%q target=%u target_index=%u target_name=%q target_level=%d target_difficulty=%q target_condition=%q player_tp=%u player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill=%u equipment=%q',
+        'REQUEST cast_id=%u spell=%u spell_name=%q target=%u target_index=%u target_name=%q target_level=%d target_difficulty=%q target_condition=%q player_tp=%u player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill_base=%u blue_magic_skill_capped=%s equipment=%q',
         state.CastId, spellId, GetBlueDebugSpellName(spellId), targetId, targetIndex, targetName, check and check.Level or -1,
         check and check.Difficulty or 'Unknown', check and check.Condition or 'Unknown',
         state.TP, state.Level, state.IntTotal, state.IntBase, state.IntModifier,
-        state.BlueMagicSkill, state.Equipment));
+        state.BlueMagicSkill, tostring(state.BlueMagicSkillCapped), state.Equipment));
 end
 
 local function LogBlueCastPacket(data)
@@ -445,10 +451,10 @@ local function LogBlueAction(packet, rawData)
     local castStats = GetBlueDebugCastStats(castId, packet.Id);
     castStats.Targets = #packet.Targets;
     WriteBlueDebug(string.format(
-        'ACTION cast_id=%u actor=%u type=%u spell=%u spell_name=%q targets=%u player_tp=%u request_tp=%d request_age=%.3f player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill=%u equipment=%q',
+        'ACTION cast_id=%u actor=%u type=%u spell=%u spell_name=%q targets=%u player_tp=%u request_tp=%d request_age=%.3f player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill_base=%u blue_magic_skill_capped=%s equipment=%q',
         castId, packet.UserId, packet.Type, packet.Id, spellName, #packet.Targets, state.TP,
         request and request.TP or -1, requestAge, state.Level, state.IntTotal, state.IntBase,
-        state.IntModifier, state.BlueMagicSkill, state.Equipment));
+        state.IntModifier, state.BlueMagicSkill, tostring(state.BlueMagicSkillCapped), state.Equipment));
     if not blueDebugRawActions[packet.Id] then
         blueDebugRawActions[packet.Id] = true;
         WriteBlueDebug(string.format('RAW_ACTION spell=%u spell_name=%q raw=%s',
@@ -1070,7 +1076,7 @@ local function HandleEnemyDeath(targetId)
     end
 end
 
-local function ClearUncertainDebuffs()
+ClearUncertainDebuffs = function()
     for _,buffData in pairs(buffsByAction) do
         if buffData.Uncertain then
             for _,target in pairs(buffData.Targets) do
@@ -1405,7 +1411,7 @@ function exports:ToggleBlueDebug()
     blueDebugStartedAt = os.clock();
     ClearBlueDebugContext(true);
     blueDebugEnabled = true;
-    local success, err = pcall(WriteBlueDebug, 'START version=9');
+    local success, err = pcall(WriteBlueDebug, 'START version=10');
     if not success then
         local path = blueDebugPath;
         CloseBlueDebug();

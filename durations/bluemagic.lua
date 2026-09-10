@@ -245,6 +245,10 @@ local function Initialize(tracker, buffer)
         return 30, 140;
     end
 
+    buffer[582] = function(targetId)
+        return 120, 6;
+    end
+
     buffer[584] = function(targetId)
         return 60, 2;
     end
