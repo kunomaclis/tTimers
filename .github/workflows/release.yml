@@ -50,17 +50,17 @@ jobs:
             ## Install
             Download `tTimersBlu-${{ github.ref_name }}.zip` below. Do not use "Source code (zip)" because it does not include the required gdifonts submodule.
 
-            Unzip it and place the `tTimersBlu` folder in your Ashita `addons` directory. In game, run `/addon load tTimersBlu`. You should see the tTimersBlu load banner.
+            1. Unzip `tTimersBlu` into your Ashita `addons` folder.
+            2. Optional: copy `config/addons/tTimers` and rename the copy `tTimersBlu` to keep your current settings.
+            3. If tTimers starts automatically, check `scripts/default.txt` for `/addon load tTimers`. Remove that line if you do not want both addons loaded.
+            4. In game, run `/addon load tTimersBlu`.
 
-            tTimersBlu is separate from the original tTimers addon and uses independent settings, so panels begin at their default positions. Both addons accept `/tt`; use `/ttblu` for tTimersBlu when both are loaded.
+            Use `/ttblu` for tTimersBlu commands. Both addons also accept `/tt`.
 
-            ## What this build does
-            - Includes the renderer stability fixes from PR #1.
-            - Adds confirmed BLU debuff timers that are always active.
-            - Adds experimental `~` BLU timers while `/ttblu bludebug` is running.
-            - Writes timestamped capture logs to `config/addons/tTimersBlu/logs/`.
+            ## Blue Magic
+            Confirmed timers are always active. Experimental `~` timers and logging are active only while `/ttblu bludebug` is running.
 
-            Capture logs include character name, level, INT, base Blue Magic skill, and equipped item IDs at cast time.
+            Logs are saved to `config/addons/tTimersBlu/logs/` and include character name, level, INT, Blue Magic skill, and equipped item IDs.
 
             tTimersBlu is a HorizonXI-specific fork of [ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers), originally created by Thorny.
           generate_release_notes: true

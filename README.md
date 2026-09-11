@@ -8,9 +8,12 @@ tTimersBlu is a separately installable HorizonXI fork of [ThornyFFXI/tTimers](ht
 ### Users
 Download the named `tTimersBlu-v*.zip` asset from the [Releases page](https://github.com/kunomaclis/tTimers/releases). Do not use GitHub's **Download ZIP** or **Source code (zip)** because those archives do not include the required `gdifonts` submodule.
 
-Unzip the asset and place the included `tTimersBlu` folder in your Ashita `addons` directory. Load it with **/addon load tTimersBlu**.
+1. Unzip `tTimersBlu` into your Ashita `addons` folder.
+2. Optional: copy `config/addons/tTimers` and rename the copy `tTimersBlu` to keep your current settings.
+3. If tTimers starts automatically, check `scripts/default.txt` for `/addon load tTimers`. Remove that line if you do not want both addons loaded.
+4. In game, run `/addon load tTimersBlu`.
 
-tTimersBlu can be installed alongside tTimers, but it starts with independent default settings and panel positions. Use `/ttblu reposition` to arrange it. Both addons accept `/tt`, so use `/ttblu` for tTimersBlu when both are loaded.
+Use `/ttblu` for tTimersBlu commands. Both addons also accept `/tt`.
 
 ### Developers
 Clone the repository with its submodule:
