@@ -225,7 +225,7 @@ function tracker:UpdateAbilities()
                 gSettings.Recast.Blocked[key] = true;
                 settings.save();
                 ability.Local.Block = nil;
-                print(chat.header('tTimers') .. chat.message('Blocked ability: ' .. ability.Label));
+                print(chat.header(addon.name) .. chat.message('Blocked ability: ' .. ability.Label));
             end
             ability.Local.Delete = nil;
             ability.Hide = true;
@@ -357,7 +357,7 @@ function tracker:UpdateSpells()
                 gSettings.Recast.Blocked[key] = true;
                 settings.save();
                 spell.Local.Block = nil;
-                print(chat.header('tTimers') .. chat.message('Blocked spell: ' .. spell.Label));
+                print(chat.header(addon.name) .. chat.message('Blocked spell: ' .. spell.Label));
             end
             spell.Local.Delete = nil;
             spell.Hide = true;

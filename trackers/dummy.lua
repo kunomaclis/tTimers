@@ -68,7 +68,7 @@ function tracker:Tick(panelName)
         if (timer.Local.Block) then
             timer.Local.Delete = true;
             state.Blocks[timer.Label] = true;
-            print(chat.header('tTimers') .. chat.message('Blocked ' .. timer.Label));
+            print(chat.header(addon.name) .. chat.message('Blocked ' .. timer.Label));
             timer.Local.Block = nil;
         end
     end

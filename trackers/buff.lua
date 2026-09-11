@@ -605,7 +605,7 @@ local function ClearDeletedTimers()
                 gSettings.Buff.Blocked[timer.Key] = true;
                 settings.save();
                 timer.Local.Block = nil;
-                print(chat.header('tTimers') .. chat.message('Blocked Buff: ' .. timer.Key));
+                print(chat.header(addon.name) .. chat.message('Blocked Buff: ' .. timer.Key));
             end
             rebuildTimers = true;
         else

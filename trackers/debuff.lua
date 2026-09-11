@@ -1214,7 +1214,7 @@ local function ClearDeletedTimers()
                 gSettings.Debuff.Blocked[timer.Key] = true;
                 settings.save();
                 timer.Local.Block = nil;
-                print(chat.header('tTimers') .. chat.message('Blocked Debuff: ' .. timer.Key));
+                print(chat.header(addon.name) .. chat.message('Blocked Debuff: ' .. timer.Key));
             end
             rebuildTimers = true;
         else
