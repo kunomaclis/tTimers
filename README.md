@@ -1,7 +1,7 @@
 # tTimersBlu
 Displays time remaining on buffs and debuffs you've cast, as well as the recast timers for your spells and abilities.
 
-## HorizonXI Fork — Version 10
+## HorizonXI Fork — Version 0.26
 tTimersBlu is a separately installable HorizonXI fork of [ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers). It adds renderer stability fixes and opt-in Blue Magic debuff tracking while preserving Thorny's original authorship and MIT license.
 
 ## Installation
@@ -67,7 +67,7 @@ Shared logs include your character name, level, INT, base Blue Magic skill, and 
 <summary>Example log entries (trimmed)</summary>
 
 ```text
-2026-09-10 18:00:00 +0.001 START version=10
+2026-09-10 18:00:00 +0.001 START addon_version=0.26 capture_version=10
 2026-09-10 18:00:08 +8.125 REQUEST cast_id=1 spell=603 spell_name="Wild Oats" target_name="Example Mob" player_level=62 player_int=52 blue_magic_skill_base=212 equipment="00:16557,..."
 2026-09-10 18:00:09 +9.010 CANDIDATE cast_id=1 spell=603 spell_name="Wild Oats" target_name="Example Mob" expected_status=138 status_name="VIT Down"
 2026-09-10 18:01:09 +69.250 DURATION confidence=candidate cast_id=1 spell=603 spell_name="Wild Oats" target_name="Example Mob" status=138 status_name="VIT Down" seconds=60.240

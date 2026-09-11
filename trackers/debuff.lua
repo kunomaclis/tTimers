@@ -1411,7 +1411,8 @@ function exports:ToggleBlueDebug()
     blueDebugStartedAt = os.clock();
     ClearBlueDebugContext(true);
     blueDebugEnabled = true;
-    local success, err = pcall(WriteBlueDebug, 'START version=10');
+    local success, err = pcall(WriteBlueDebug,
+        string.format('START addon_version=%s capture_version=10', tostring(addon.version)));
     if not success then
         local path = blueDebugPath;
         CloseBlueDebug();
