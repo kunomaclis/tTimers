@@ -31,10 +31,637 @@ local abilityTypes = T{ 6, 14, 15 };
 local actionMessages = T{
     Death = T{ 6, 20, 113, 406, 605, 646 },
     Expired = T{ 64, 204, 206, 350, 351 },
-    Damage = T{ 2, 110, 252, 317 },
+    Damage = T{ 2, 110, 252, 264, 317 },
     Steps = T{ 519, 520, 521, 591 },
-    Applied = T{ 127, 203, 236, 237, 268, 270, 271 },
+    Applied = T{ 127, 203, 236, 237, 268, 270, 271, 277 },
 };
+local blueDebugEnabled = false;
+local blueDebugFile;
+local blueDebugPath;
+local blueDebugRecentUntil = 0;
+local blueDebugStartedAt = 0;
+local blueDebugTargets = {};
+local blueDebugCastContexts = {};
+local blueDebugChecks = {};
+local blueDebugPending = {};
+local blueDebugRawActions = {};
+local blueDebugRawExpirations = {};
+local blueDebugRawMessages = {};
+local blueDebugCastStats = {};
+local blueDebugLastRequestSignature;
+local blueDebugLastRequestAt = 0;
+local blueDebugNextCastId = 0;
+local ClearUncertainDebuffs;
+local blueDebugAppliedMessages = T{ 236, 271, 277 };
+local blueDebugExpectedStatuses = {
+    [515] = T{ 136 },
+    [524] = T{ 146 },
+    [531] = T{ 11 },
+    [532] = T{ 10 },
+    [534] = T{ 12 },
+    [536] = T{ 3 },
+    [539] = T{ 147 },
+    [555] = T{ 12 },
+    [563] = T{ 5 },
+    [565] = T{ 13, 6 },
+    [596] = T{ 2 },
+    [597] = T{ 13 },
+    [599] = T{ 3 },
+    [603] = T{ 138 },
+    [604] = T{ 13, 6, 4, 11, 12, 3, 5 },
+    [608] = T{ 4 },
+    [611] = T{ 3 },
+    [618] = T{ 11 },
+    [620] = T{ 137 },
+    [623] = T{ 10 },
+    [628] = T{ 10 },
+    [638] = T{ 3 },
+    [640] = T{ 10 },
+    [644] = T{ 4 },
+    [671] = T{ 5, 11 },
+};
+local blueDebugStatusNames = {
+    [2] = 'Sleep',
+    [3] = 'Poison',
+    [4] = 'Paralysis',
+    [5] = 'Blindness',
+    [6] = 'Silence',
+    [10] = 'Stun',
+    [11] = 'Bind',
+    [12] = 'Weight',
+    [13] = 'Slow',
+    [31] = 'Plague',
+    [129] = 'Frost',
+    [136] = 'STR Down',
+    [137] = 'DEX Down',
+    [138] = 'VIT Down',
+    [140] = 'INT Down',
+    [146] = 'Accuracy Down',
+    [147] = 'Attack Down',
+    [148] = 'Evasion Down',
+    [149] = 'Defense Down',
+    [156] = 'Flash',
+    [167] = 'Magic Defense Down',
+};
+local blueDebugCheckTypes = {
+    [0x40] = 'Too Weak',
+    [0x41] = 'Incredibly Easy Prey',
+    [0x42] = 'Easy Prey',
+    [0x43] = 'Decent Challenge',
+    [0x44] = 'Even Match',
+    [0x45] = 'Tough',
+    [0x46] = 'Very Tough',
+    [0x47] = 'Incredibly Tough',
+};
+local blueDebugCheckConditions = {
+    [0xAA] = 'High Evasion, High Defense',
+    [0xAB] = 'High Evasion',
+    [0xAC] = 'High Evasion, Low Defense',
+    [0xAD] = 'High Defense',
+    [0xAE] = 'Neutral Evasion and Defense',
+    [0xAF] = 'Low Defense',
+    [0xB0] = 'Low Evasion, High Defense',
+    [0xB1] = 'Low Evasion',
+    [0xB2] = 'Low Evasion, Low Defense',
+};
+
+local function ClearBlueDebugContext(resetCapture)
+    blueDebugRecentUntil = 0;
+    blueDebugTargets = {};
+    blueDebugCastContexts = {};
+    blueDebugChecks = {};
+    blueDebugPending = {};
+    blueDebugCastStats = {};
+    blueDebugLastRequestSignature = nil;
+    blueDebugLastRequestAt = 0;
+    if resetCapture then
+        blueDebugRawActions = {};
+        blueDebugRawExpirations = {};
+        blueDebugRawMessages = {};
+        blueDebugNextCastId = 0;
+    end
+end
+
+local function CloseBlueDebug()
+    local file = blueDebugFile;
+    blueDebugFile = nil;
+    blueDebugEnabled = false;
+    ClearBlueDebugContext(true);
+    if file then
+        pcall(file.close, file);
+    end
+end
+
+local function WriteBlueDebug(text)
+    if blueDebugFile then
+        blueDebugFile:write(string.format('%s +%.3f %s\n',
+            os.date('%Y-%m-%d %H:%M:%S'), os.clock() - blueDebugStartedAt, text));
+        blueDebugFile:flush();
+    end
+end
+
+local function RunBlueDebug(context, callback, ...)
+    local success, err = pcall(callback, ...);
+    if success then
+        return true;
+    end
+
+    local path = blueDebugPath;
+    pcall(WriteBlueDebug, string.format('ERROR context=%q detail=%q', context, tostring(err)));
+    if ClearUncertainDebuffs then
+        pcall(ClearUncertainDebuffs);
+    end
+    CloseBlueDebug();
+    Error(string.format('BLU debug capture stopped after %s failed: $H%s$R (%s)',
+        context, tostring(err), tostring(path)));
+    return false;
+end
+
+local function HexString(data)
+    local bytes = {};
+    for i = 1,#data do
+        bytes[#bytes + 1] = string.format('%02X', string.byte(data, i));
+    end
+    return table.concat(bytes);
+end
+
+local function GetBlueDebugPacketData(e)
+    local data = e.data;
+    local size = tonumber(e.size) or #data;
+    if (size > 0) and (size < #data) then
+        return string.sub(data, 1, size);
+    end
+    return data;
+end
+
+local function GetBlueDebugSpellName(spellId)
+    local resource = AshitaCore:GetResourceManager():GetSpellById(spellId);
+    if resource and resource.Name and resource.Name[1] then
+        return encoding:ShiftJIS_To_UTF8(resource.Name[1]);
+    end
+    return string.format('Unknown Spell %u', spellId);
+end
+
+local function GetBlueDebugStatusName(statusId)
+    return blueDebugStatusNames[statusId] or string.format('Status %u', statusId);
+end
+
+local function AddBlueDebugPending(targetId, statusId, spellId, castId, confirmed, now)
+    local pending = blueDebugPending[targetId];
+    if not pending then
+        pending = {};
+        blueDebugPending[targetId] = pending;
+    end
+
+    for i = #pending,1,-1 do
+        if (now - pending[i].Time) > 1200 then
+            table.remove(pending, i);
+        elseif (pending[i].CastId == castId)
+            and (pending[i].SpellId == spellId)
+            and (pending[i].StatusId == statusId)
+        then
+            if confirmed and not pending[i].Confirmed then
+                pending[i].Confirmed = true;
+                pending[i].Time = now;
+                return true;
+            end
+            return false;
+        end
+    end
+
+    pending[#pending + 1] = {
+        Time = now,
+        SpellId = spellId,
+        CastId = castId,
+        StatusId = statusId,
+        Confirmed = confirmed,
+    };
+    return true;
+end
+
+local function GetBlueDebugTarget(targetId)
+    local entity = AshitaCore:GetMemoryManager():GetEntity();
+    local index = bit.band(targetId, 0x7FF);
+    if entity:GetServerId(index) ~= targetId then
+        index = 0;
+        for i = 0x001,0x8FF do
+            if entity:GetServerId(i) == targetId then
+                index = i;
+                break
+            end
+        end
+    end
+
+    if index == 0 then
+        return 'Unknown', 0;
+    end
+    return entity:GetName(index), index;
+end
+
+local function GetBlueDebugTargetSafe(targetId)
+    local success, name, index = pcall(GetBlueDebugTarget, targetId);
+    if success then
+        return name, index;
+    end
+    return 'Unknown', 0;
+end
+
+local function GetBlueDebugCastStats(castId, spellId)
+    local stats = blueDebugCastStats[castId];
+    if not stats then
+        stats = {
+            SpellId = spellId,
+            SpellName = GetBlueDebugSpellName(spellId),
+            Targets = 0,
+            Lands = 0,
+            Candidates = 0,
+            NoEffect = 0,
+            Durations = 0,
+            ClearedTargets = 0,
+        };
+        blueDebugCastStats[castId] = stats;
+    end
+    return stats;
+end
+
+local function LogBlueDebugSummary(reason)
+    local unresolved = {};
+    local targetIds = {};
+    for targetId,_ in pairs(blueDebugPending) do
+        targetIds[#targetIds + 1] = targetId;
+    end
+    table.sort(targetIds);
+    local now = os.clock();
+    for _,targetId in ipairs(targetIds) do
+        local pending = blueDebugPending[targetId];
+        local entries = {};
+        for _,entry in ipairs(pending) do
+            unresolved[entry.CastId] = (unresolved[entry.CastId] or 0) + 1;
+            entries[#entries + 1] = string.format('%u:%u:%u:%.3f',
+                entry.CastId, entry.SpellId, entry.StatusId, now - entry.Time);
+        end
+        local targetName, targetIndex = GetBlueDebugTargetSafe(targetId);
+        WriteBlueDebug(string.format(
+            'UNRESOLVED reason=%s target=%u target_name=%q entity_index=%u pending=%q',
+            reason, targetId, targetName, targetIndex, table.concat(entries, ',')));
+    end
+    for castId = 1,blueDebugNextCastId do
+        local stats = blueDebugCastStats[castId];
+        if stats and ((stats.Lands > 0) or (stats.Candidates > 0)
+            or (stats.NoEffect > 0) or (stats.Durations > 0)
+            or (stats.ClearedTargets > 0) or ((unresolved[castId] or 0) > 0))
+        then
+            WriteBlueDebug(string.format(
+                'CAST_SUMMARY reason=%s cast_id=%u spell=%u spell_name=%q targets=%u lands=%u candidates=%u no_effect=%u durations=%u cleared_targets=%u unresolved=%u',
+                reason, castId, stats.SpellId, stats.SpellName,
+                stats.Targets, stats.Lands, stats.Candidates, stats.NoEffect,
+                stats.Durations, stats.ClearedTargets, unresolved[castId] or 0));
+        end
+    end
+end
+
+local function LogBlueDebugTargetClear(targetId, reason)
+    local pending = blueDebugPending[targetId];
+    if not pending then
+        return;
+    end
+    local targetName, targetIndex = GetBlueDebugTargetSafe(targetId);
+    local casts = {};
+    for _,entry in ipairs(pending) do
+        casts[entry.CastId] = true;
+    end
+    local castIds = {};
+    for castId,_ in pairs(casts) do
+        castIds[#castIds + 1] = castId;
+        local stats = blueDebugCastStats[castId];
+        if stats then
+            stats.ClearedTargets = stats.ClearedTargets + 1;
+        end
+    end
+    table.sort(castIds);
+    WriteBlueDebug(string.format(
+        'TARGET_CLEARED reason=%s target=%u target_name=%q entity_index=%u pending=%u casts=%q',
+        reason, targetId, targetName, targetIndex, #pending, table.concat(castIds, ',')));
+end
+
+local function GetBlueDebugEquipment()
+    local items = {};
+    for _,item in ipairs(durations:GetDataTracker():GetEquippedSet()) do
+        items[#items + 1] = string.format('%02u:%u', item.Slot, item.Id);
+    end
+    table.sort(items);
+    return table.concat(items, ',');
+end
+
+local function GetBlueDebugPlayerState()
+    local memory = AshitaCore:GetMemoryManager();
+    local player = memory:GetPlayer();
+    local intBase = player:GetStat(4);
+    local intModifier = player:GetStatModifier(4);
+    local blueMagicSkill = player:GetCombatSkill(43);
+    return {
+        Time = os.clock(),
+        TP = memory:GetParty():GetMemberTP(0),
+        Level = player:GetMainJobLevel(),
+        BlueMagicSkill = blueMagicSkill:GetSkill(),
+        BlueMagicSkillCapped = blueMagicSkill:IsCapped(),
+        IntBase = intBase,
+        IntModifier = intModifier,
+        IntTotal = intBase + intModifier,
+        Equipment = GetBlueDebugEquipment(),
+    };
+end
+
+local function LogBlueCheck(data, messageId)
+    local targetId = struct.unpack('L', data, 0x08 + 1);
+    local level = struct.unpack('L', data, 0x0C + 1);
+    local checkType = struct.unpack('L', data, 0x10 + 1);
+    local targetName, targetIndex = GetBlueDebugTarget(targetId);
+    local difficulty = blueDebugCheckTypes[checkType] or 'Unknown';
+    local condition = blueDebugCheckConditions[messageId] or 'Impossible to Gauge';
+    if level > 0x7FFFFFFF then
+        level = level - 0x100000000;
+    end
+
+    blueDebugTargets[targetId] = true;
+    blueDebugChecks[targetId] = {
+        Level = level,
+        Difficulty = difficulty,
+        Condition = condition,
+    };
+    WriteBlueDebug(string.format(
+        'CHECK target=%u target_index=%u target_name=%q level=%d difficulty=%q condition=%q check_type=%u message=%u',
+        targetId, targetIndex, targetName, level, difficulty, condition, checkType,
+        messageId));
+end
+
+local function LogBlueCastRequest(data)
+    local targetId = struct.unpack('L', data, 0x04 + 1);
+    local spellId = struct.unpack('H', data, 0x0C + 1);
+    local now = os.clock();
+    local signature = string.format('%u:%u', spellId, targetId);
+    if (signature == blueDebugLastRequestSignature) and ((now - blueDebugLastRequestAt) < 0.05) then
+        return;
+    end
+    blueDebugLastRequestSignature = signature;
+    blueDebugLastRequestAt = now;
+
+    local targetName, targetIndex = GetBlueDebugTarget(targetId);
+    local state = GetBlueDebugPlayerState();
+    local check = blueDebugChecks[targetId];
+    blueDebugNextCastId = blueDebugNextCastId + 1;
+    state.CastId = blueDebugNextCastId;
+    state.TargetId = targetId;
+    blueDebugCastContexts[spellId] = state;
+    GetBlueDebugCastStats(state.CastId, spellId);
+    WriteBlueDebug(string.format(
+        'REQUEST cast_id=%u spell=%u spell_name=%q target=%u target_index=%u target_name=%q target_level=%d target_difficulty=%q target_condition=%q player_tp=%u player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill_base=%u blue_magic_skill_capped=%s equipment=%q',
+        state.CastId, spellId, GetBlueDebugSpellName(spellId), targetId, targetIndex, targetName, check and check.Level or -1,
+        check and check.Difficulty or 'Unknown', check and check.Condition or 'Unknown',
+        state.TP, state.Level, state.IntTotal, state.IntBase, state.IntModifier,
+        state.BlueMagicSkill, tostring(state.BlueMagicSkillCapped), state.Equipment));
+end
+
+local function LogBlueCastPacket(data)
+    if (#data >= 0x0E)
+        and (struct.unpack('H', data, 0x0A + 1) == 3)
+        and (struct.unpack('H', data, 0x0C + 1) >= 513)
+    then
+        LogBlueCastRequest(data);
+    end
+end
+
+local function LogBlueAction(packet, rawData)
+    blueDebugRecentUntil = os.clock() + 2;
+    local state = GetBlueDebugPlayerState();
+    local request = blueDebugCastContexts[packet.Id];
+    local requestAge = request and (state.Time - request.Time) or -1;
+    if requestAge > 10 then
+        request = nil;
+        requestAge = -1;
+    end
+    local castId;
+    if request then
+        castId = request.CastId;
+    else
+        blueDebugNextCastId = blueDebugNextCastId + 1;
+        castId = blueDebugNextCastId;
+    end
+    local spellName = GetBlueDebugSpellName(packet.Id);
+    local castStats = GetBlueDebugCastStats(castId, packet.Id);
+    castStats.Targets = #packet.Targets;
+    WriteBlueDebug(string.format(
+        'ACTION cast_id=%u actor=%u type=%u spell=%u spell_name=%q targets=%u player_tp=%u request_tp=%d request_age=%.3f player_level=%u player_int=%d int_base=%d int_modifier=%d blue_magic_skill_base=%u blue_magic_skill_capped=%s equipment=%q',
+        castId, packet.UserId, packet.Type, packet.Id, spellName, #packet.Targets, state.TP,
+        request and request.TP or -1, requestAge, state.Level, state.IntTotal, state.IntBase,
+        state.IntModifier, state.BlueMagicSkill, tostring(state.BlueMagicSkillCapped), state.Equipment));
+    if not blueDebugRawActions[packet.Id] then
+        blueDebugRawActions[packet.Id] = true;
+        WriteBlueDebug(string.format('RAW_ACTION spell=%u spell_name=%q raw=%s',
+            packet.Id, spellName, HexString(rawData)));
+    end
+
+    local expectedStatuses = blueDebugExpectedStatuses[packet.Id];
+    for targetIndex,target in ipairs(packet.Targets) do
+        blueDebugTargets[target.Id] = true;
+        local targetName, entityIndex = GetBlueDebugTarget(target.Id);
+        local check = blueDebugChecks[target.Id];
+        for actionIndex,action in ipairs(target.Actions) do
+            local additionalEffect = action.AdditionalEffect;
+            WriteBlueDebug(string.format(
+                'RESULT cast_id=%u spell=%u spell_name=%q packet_target_index=%u action_index=%u target=%u entity_index=%u target_name=%q target_level=%d target_difficulty=%q target_condition=%q reaction=%u animation=%u effect=%u knockback=%u param=%u message=%u flags=%u additional=%s additional_damage=%u additional_param=%u additional_message=%u',
+                castId, packet.Id, spellName, targetIndex, actionIndex, target.Id, entityIndex, targetName,
+                check and check.Level or -1, check and check.Difficulty or 'Unknown',
+                check and check.Condition or 'Unknown', action.Reaction, action.Animation,
+                action.SpecialEffect, action.Knockback, action.Param, action.Message, action.Flags,
+                additionalEffect and 'yes' or 'no',
+                additionalEffect and additionalEffect.Damage or 0,
+                additionalEffect and additionalEffect.Param or 0,
+                additionalEffect and additionalEffect.Message or 0));
+
+            local applied = blueDebugAppliedMessages:contains(action.Message);
+            if applied then
+                if AddBlueDebugPending(target.Id, action.Param, packet.Id, castId, true, state.Time) then
+                    castStats.Lands = castStats.Lands + 1;
+                    WriteBlueDebug(string.format(
+                        'LAND cast_id=%u spell=%u spell_name=%q target=%u target_name=%q status=%u status_name=%q message=%u',
+                        castId, packet.Id, spellName, target.Id, targetName, action.Param,
+                        GetBlueDebugStatusName(action.Param), action.Message));
+                end
+            elseif action.Message == 75 then
+                castStats.NoEffect = castStats.NoEffect + 1;
+                WriteBlueDebug(string.format(
+                    'NO_EFFECT cast_id=%u spell=%u spell_name=%q target=%u target_name=%q param=%u message=%u',
+                    castId, packet.Id, spellName, target.Id, targetName, action.Param, action.Message));
+            end
+
+            if expectedStatuses and (action.Message ~= 75) and (action.Param > 0) then
+                for _,statusId in ipairs(expectedStatuses) do
+                    if not applied or (statusId ~= action.Param) then
+                        if AddBlueDebugPending(target.Id, statusId, packet.Id, castId, false, state.Time) then
+                            castStats.Candidates = castStats.Candidates + 1;
+                            WriteBlueDebug(string.format(
+                                'CANDIDATE cast_id=%u spell=%u spell_name=%q target=%u target_name=%q expected_status=%u status_name=%q',
+                                castId, packet.Id, spellName, target.Id, targetName, statusId,
+                                GetBlueDebugStatusName(statusId)));
+                        end
+                    end
+                end
+            end
+        end
+    end
+    blueDebugCastContexts[packet.Id] = nil;
+end
+
+local function LogBlueActionMessage(data, messageId, reason)
+    if blueDebugRawMessages[messageId] then
+        return;
+    end
+    blueDebugRawMessages[messageId] = true;
+    local targetId = struct.unpack('L', data, 0x08 + 1);
+    local targetName, targetIndex = GetBlueDebugTarget(targetId);
+    WriteBlueDebug(string.format(
+        'MESSAGE reason=%s actor=%u target=%u target_name=%q entity_index=%u param1=%u param2=%u actor_index=%u target_index=%u message=%u raw=%s',
+        reason,
+        struct.unpack('L', data, 0x04 + 1),
+        targetId,
+        targetName,
+        targetIndex,
+        struct.unpack('L', data, 0x0C + 1),
+        struct.unpack('L', data, 0x10 + 1),
+        struct.unpack('H', data, 0x14 + 1),
+        struct.unpack('H', data, 0x16 + 1),
+        messageId,
+        HexString(data)));
+end
+
+local function LogBlueExpiration(data, messageId)
+    local targetId = struct.unpack('L', data, 0x08 + 1);
+    local statusId = struct.unpack('H', data, 0x0C + 1);
+    local pending = blueDebugPending[targetId];
+    if not pending then
+        return;
+    end
+
+    local now = os.clock();
+    local matches = {};
+    for i = #pending,1,-1 do
+        if (now - pending[i].Time) > 1200 then
+            table.remove(pending, i);
+        elseif pending[i].StatusId == statusId then
+            matches[#matches + 1] = pending[i];
+            table.remove(pending, i);
+        end
+    end
+    if #pending == 0 then
+        blueDebugPending[targetId] = nil;
+    end
+    if (#matches == 0) and (#pending == 0) then
+        return;
+    end
+
+    local targetName, targetIndex = GetBlueDebugTarget(targetId);
+    if #matches == 0 then
+        local candidates = {};
+        for _,entry in ipairs(pending) do
+            candidates[#candidates + 1] = string.format('%u:%u:%.3f',
+                entry.CastId, entry.SpellId, now - entry.Time);
+        end
+        WriteBlueDebug(string.format(
+            'EXPIRE_UNMATCHED target=%u target_name=%q entity_index=%u status=%u status_name=%q message=%u pending=%q',
+            targetId, targetName, targetIndex, statusId, GetBlueDebugStatusName(statusId),
+            messageId, table.concat(candidates, ',')));
+        if not blueDebugRawExpirations[statusId] then
+            blueDebugRawExpirations[statusId] = true;
+            WriteBlueDebug(string.format('RAW_EXPIRE status=%u status_name=%q raw=%s',
+                statusId, GetBlueDebugStatusName(statusId), HexString(data)));
+        end
+        return;
+    end
+
+    WriteBlueDebug(string.format(
+        'EXPIRE target=%u target_name=%q entity_index=%u status=%u status_name=%q message=%u candidates=%u',
+        targetId, targetName, targetIndex, statusId, GetBlueDebugStatusName(statusId),
+        messageId, #matches));
+
+    local selected;
+    for _,entry in ipairs(matches) do
+        if entry.Confirmed and ((not selected) or (entry.Time > selected.Time)) then
+            selected = entry;
+        end
+    end
+    if selected then
+        WriteBlueDebug(string.format(
+            'DURATION confidence=confirmed cast_id=%u spell=%u spell_name=%q target=%u target_name=%q status=%u status_name=%q seconds=%.3f',
+            selected.CastId, selected.SpellId, GetBlueDebugSpellName(selected.SpellId),
+            targetId, targetName, statusId, GetBlueDebugStatusName(statusId), now - selected.Time));
+    elseif #matches == 1 then
+        selected = matches[1];
+        WriteBlueDebug(string.format(
+            'DURATION confidence=candidate cast_id=%u spell=%u spell_name=%q target=%u target_name=%q status=%u status_name=%q seconds=%.3f',
+            selected.CastId, selected.SpellId, GetBlueDebugSpellName(selected.SpellId),
+            targetId, targetName, statusId, GetBlueDebugStatusName(statusId), now - selected.Time));
+    else
+        local candidates = {};
+        for _,entry in ipairs(matches) do
+            candidates[#candidates + 1] = string.format('%u:%u:%.3f',
+                entry.CastId, entry.SpellId, now - entry.Time);
+        end
+        WriteBlueDebug(string.format(
+            'DURATION_AMBIGUOUS target=%u target_name=%q status=%u status_name=%q candidates=%q',
+            targetId, targetName, statusId, GetBlueDebugStatusName(statusId),
+            table.concat(candidates, ',')));
+    end
+    if selected then
+        local stats = blueDebugCastStats[selected.CastId];
+        if stats then
+            stats.Durations = stats.Durations + 1;
+        end
+    end
+
+    if not blueDebugRawExpirations[statusId] then
+        blueDebugRawExpirations[statusId] = true;
+        WriteBlueDebug(string.format('RAW_EXPIRE status=%u status_name=%q raw=%s',
+            statusId, GetBlueDebugStatusName(statusId), HexString(data)));
+    end
+end
+
+local function LogBlueActionMessagePacket(data, messageId)
+    local targetId = struct.unpack('L', data, 0x08 + 1);
+    local checkType = struct.unpack('L', data, 0x10 + 1);
+    if (messageId == 0xF9)
+        or (blueDebugCheckConditions[messageId] and blueDebugCheckTypes[checkType])
+    then
+        LogBlueCheck(data, messageId);
+    elseif actionMessages.Expired:contains(messageId) then
+        LogBlueExpiration(data, messageId);
+    elseif os.clock() <= blueDebugRecentUntil then
+        LogBlueActionMessage(data, messageId, 'recent');
+    elseif blueDebugTargets[targetId] then
+        LogBlueActionMessage(data, messageId, 'tracked_target');
+    end
+end
+
+local function LogBlueCastEvent(e)
+    LogBlueCastPacket(GetBlueDebugPacketData(e));
+end
+
+local function LogBlueActionEvent(packet, e)
+    LogBlueAction(packet, GetBlueDebugPacketData(e));
+end
+
+local function LogBlueActionMessageEvent(e, messageId)
+    LogBlueActionMessagePacket(GetBlueDebugPacketData(e), messageId);
+end
+
+local function ClearBlueDebugTarget(targetId, reason)
+    if blueDebugEnabled and reason then
+        RunBlueDebug('target clear', LogBlueDebugTargetClear, targetId, reason);
+    end
+    blueDebugTargets[targetId] = nil;
+    blueDebugChecks[targetId] = nil;
+    blueDebugPending[targetId] = nil;
+end
 local dotPriority = T{
     [232] = 6,
     [25] = 5,
@@ -241,8 +868,16 @@ local function MonsterIdToName(id)
     end
 end
 
-local function RecordDebuff(targetId, actionType, actionId, buffId, duration)
-    local playerTable = ClearConflicts(targetId, buffId);
+local function RecordDebuff(targetId, actionType, actionId, buffId, duration, uncertain)
+    local playerTable = buffsByTarget[targetId];
+    if uncertain then
+        if not playerTable then
+            playerTable = T{};
+            buffsByTarget[targetId] = playerTable;
+        end
+    else
+        playerTable = ClearConflicts(targetId, buffId);
+    end
     local key = string.format('%s:%u', actionType, actionId);
 
     local actionTable = buffsByAction[key];
@@ -251,9 +886,13 @@ local function RecordDebuff(targetId, actionType, actionId, buffId, duration)
         actionTable.ActionType = actionType;
         actionTable.ActionId = actionId;
         actionTable.BuffId = buffId;
+        actionTable.Uncertain = uncertain;
         actionTable.Key = key;
         actionTable.Targets = T{};
         GetActionName(actionTable);
+        if uncertain then
+            actionTable.Name = '~' .. actionTable.Name;
+        end
         GetActionIcon(actionTable);
         buffsByAction[key] = actionTable;
     end
@@ -347,13 +986,21 @@ local function HandleStep(targetId, actionId)
     RecordDebuff(targetId, 'Ability', actionId, stepBuffIds[actionId], 60 + mods);
 end
 
+local function LogBlueTimerStart(uncertain, spellId, targetId, buffId, duration, messageId)
+    WriteBlueDebug(string.format(
+        'TIMER_START confidence=%s spell=%u spell_name=%q target=%u status=%u status_name=%q duration=%.3f message=%u',
+        uncertain and 'assumed' or 'confirmed', spellId, GetBlueDebugSpellName(spellId),
+        targetId, buffId, GetBlueDebugStatusName(buffId), duration, messageId));
+end
+
 local function HandleSpellComplete(packet)
+    local localPlayer = packet.UserId == durations:GetDataTracker():GetPlayerId();
     for _,target in ipairs(packet.Targets) do
         for _,action in ipairs(target.Actions) do
             local messageId = action.Message;
             if (actionMessages.Applied:contains(messageId)) or (actionMessages.Damage:contains(messageId)) then
-                local duration, buffId = durations:GetSpellDuration(packet.Id, target.Id);
-                if duration then
+                local duration, buffId, uncertain = durations:GetSpellDuration(packet.Id, target.Id);
+                if duration and (not uncertain or (blueDebugEnabled and localPlayer)) then
                     if type(buffId) == 'table' then
                         buffId = buffId[1];
                     end
@@ -362,7 +1009,11 @@ local function HandleSpellComplete(packet)
                     if dotPrio then
                         HandleDiaBio(target.Id, 'Spell', packet.Id, buffId, duration);
                     else
-                        RecordDebuff(target.Id, 'Spell', packet.Id, buffId, duration);
+                        RecordDebuff(target.Id, 'Spell', packet.Id, buffId, duration, uncertain);
+                    end
+                    if blueDebugEnabled and localPlayer and (packet.Id >= 513) then
+                        RunBlueDebug('timer start', LogBlueTimerStart, uncertain,
+                            packet.Id, target.Id, buffId, duration, messageId);
                     end
                 end
             end
@@ -425,27 +1076,67 @@ local function HandleEnemyDeath(targetId)
     end
 end
 
+ClearUncertainDebuffs = function()
+    for _,buffData in pairs(buffsByAction) do
+        if buffData.Uncertain then
+            for _,target in pairs(buffData.Targets) do
+                target.Delete = true;
+            end
+            rebuildTimers = true;
+        end
+    end
+end
+
 local function CheckDistance(index)
     local distance = AshitaCore:GetMemoryManager():GetEntity():GetDistance(index);
     if (distance ~= 0) and (distance < 1225) then
         return true;
     end
 end
+
+ashita.events.register('packet_out', 'debuff_tracker_handleoutgoingpacket', function (e)
+    if not blueDebugEnabled or (e.id ~= 0x01A) then
+        return;
+    end
+
+    RunBlueDebug('cast request', LogBlueCastEvent, e);
+end);
+
 ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', function (e)
+    if blueDebugEnabled and (e.id == 0x00A) then
+        RunBlueDebug('zone summary', LogBlueDebugSummary, 'zone');
+        if blueDebugEnabled then
+            RunBlueDebug('zone reset', WriteBlueDebug, 'ZONE_RESET');
+            ClearUncertainDebuffs();
+            ClearBlueDebugContext();
+        end
+    end
+
     if (e.id == 0x00E) then
         local flags = struct.unpack('B', e.data, 0x0A + 1);
         if (bit.band(flags, 0x20) == 0x20) and (CheckDistance(struct.unpack('H', e.data, 0x08 + 1))) then
-            HandleEnemyDeath(struct.unpack('L', e.data, 0x04 + 1));
+            local targetId = struct.unpack('L', e.data, 0x04 + 1);
+            HandleEnemyDeath(targetId);
+            ClearBlueDebugTarget(targetId, 'entity_removed');
         elseif (bit.band(flags, 0x04) == 0x04) then
             local hp = struct.unpack('B', e.data, 0x1E + 1);
             if (hp == 0) then
-                HandleEnemyDeath(struct.unpack('L', e.data, 0x04 + 1));
+                local targetId = struct.unpack('L', e.data, 0x04 + 1);
+                HandleEnemyDeath(targetId);
+                ClearBlueDebugTarget(targetId, 'hp_zero');
             end
         end
     end
 
     if (e.id == 0x028) then
         local packet = actionPacket:parse(e);
+        if blueDebugEnabled
+            and (packet.UserId == durations:GetDataTracker():GetPlayerId())
+            and (packet.Type == 4)
+            and (packet.Id >= 513)
+        then
+            RunBlueDebug('action packet', LogBlueActionEvent, packet, e);
+        end
         local trackAction = (packet.UserId == durations:GetDataTracker():GetPlayerId());
         if (trackAction == false) then
             if (gSettings.Debuff.TrackMode == 'All Players') then
@@ -485,9 +1176,15 @@ ashita.events.register('packet_in', 'debuff_tracker_handleincomingpacket', funct
     end
 
     if (e.id == 0x29) then
-        local messageId = bit.band(struct.unpack('H', e.data, 0x18 + 1), 0x7FFF);
+        local data = e.data;
+        local messageId = bit.band(struct.unpack('H', data, 0x18 + 1), 0x7FFF);
+        if blueDebugEnabled then
+            RunBlueDebug('action message', LogBlueActionMessageEvent, e, messageId);
+        end
         if (actionMessages.Death:contains(messageId)) then
-            HandleEnemyDeath(struct.unpack('L', e.data, 0x08 + 1));
+            local targetId = struct.unpack('L', e.data, 0x08 + 1);
+            HandleEnemyDeath(targetId);
+            ClearBlueDebugTarget(targetId, 'death_message');
         end
         if (actionMessages.Expired:contains(messageId)) then
             HandleDebuffExpiration(struct.unpack('H', e.data, 0x0C + 1), struct.unpack('L', e.data, 0x08 + 1));
@@ -666,6 +1363,71 @@ end
 
 
 local exports = {};
+
+function exports:ToggleBlueDebug()
+    if blueDebugEnabled then
+        pcall(LogBlueDebugSummary, 'stop');
+        pcall(WriteBlueDebug, 'STOP');
+        ClearUncertainDebuffs();
+        local path = blueDebugPath;
+        CloseBlueDebug();
+        return false, path;
+    end
+
+    local timestamp = os.date('%Y%m%d-%H%M%S');
+    local directory = string.format('%sconfig/addons/%s/logs/', AshitaCore:GetInstallPath(), addon.name);
+    if not ashita.fs.exists(directory) then
+        local createDirectory = ashita.fs.create_directory or ashita.fs.create_dir;
+        if type(createDirectory) == 'function' then
+            createDirectory(directory);
+        end
+    end
+    if not ashita.fs.exists(directory) then
+        return nil, directory;
+    end
+
+    for suffix = 0,99 do
+        local name = suffix == 0
+            and string.format('blu-debug-%s.log', timestamp)
+            or string.format('blu-debug-%s-%u.log', timestamp, suffix);
+        blueDebugPath = directory .. name;
+        if not ashita.fs.exists(blueDebugPath) then
+            blueDebugFile = io.open(blueDebugPath, 'w');
+            if blueDebugFile then
+                break
+            end
+        end
+    end
+
+    if not blueDebugFile then
+        blueDebugPath = directory .. string.format('blu-debug-%s-overflow.log', timestamp);
+        blueDebugFile = io.open(blueDebugPath, 'w');
+    end
+
+    if not blueDebugFile then
+        return nil, blueDebugPath;
+    end
+
+    blueDebugStartedAt = os.clock();
+    ClearBlueDebugContext(true);
+    blueDebugEnabled = true;
+    local success, err = pcall(WriteBlueDebug, 'START version=10');
+    if not success then
+        local path = blueDebugPath;
+        CloseBlueDebug();
+        return nil, string.format('%s (%s)', path, tostring(err));
+    end
+    return true, blueDebugPath;
+end
+
+ashita.events.register('unload', 'debuff_tracker_bludebug_unload', function ()
+    if blueDebugEnabled then
+        pcall(LogBlueDebugSummary, 'unload');
+        pcall(WriteBlueDebug, 'STOP reason=unload');
+        ClearUncertainDebuffs();
+    end
+    CloseBlueDebug();
+end);
 
 local lastSetting;
 function exports:Tick()

@@ -18,35 +18,47 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Stage into addons/<repo>
+      - name: Stage release
         run: |
           set -euo pipefail
-          REPO_NAME="${GITHUB_REPOSITORY#*/}"   # owner/repo -> repo
 
-          mkdir -p "dist/addons/${REPO_NAME}"
+          mkdir -p "dist/tTimers"
           
           rsync -a --delete \
-            --exclude ".git/" \
-            --exclude ".github/" \
-            --exclude "dist/" \
-            ./ "dist/addons/${REPO_NAME}/"
+            --exclude ".git" \
+            --exclude ".gitmodules" \
+            --exclude ".github" \
+            --exclude "dist" \
+            ./ "dist/tTimers/"
 
           echo "Staged contents:"
-          ls -la "dist/addons/${REPO_NAME}"
+          ls -la "dist/tTimers"
 
       - name: Zip it
         run: |
           set -euo pipefail
-          REPO_NAME="${GITHUB_REPOSITORY#*/}"
           cd dist
-          ZIP_NAME="${REPO_NAME}-${GITHUB_REF_NAME}.zip"
-          zip -r "${ZIP_NAME}" "addons/${REPO_NAME}"
+          ZIP_NAME="tTimers-${GITHUB_REF_NAME}.zip"
+          zip -r "${ZIP_NAME}" "tTimers"
           echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
 
       - name: Create/Update GitHub Release and upload asset
         uses: softprops/action-gh-release@v2
         with:
           files: dist/${{ env.ZIP_NAME }}
+          body: |
+            ## Install
+            Download `tTimers-${{ github.ref_name }}.zip` below. Do not use "Source code (zip)" because it does not include the required gdifonts submodule.
+
+            Unzip it and place the `tTimers` folder in your Ashita `addons` directory, replacing any existing tTimers folder. In game, run `/addon reload tTimers`. You should see `BLU debug capture build v10 loaded.`
+
+            ## What this build does
+            - Includes the renderer stability fixes from PR #1.
+            - Adds confirmed BLU debuff timers that are always active.
+            - Adds experimental `~` BLU timers while `/tt bludebug` is running.
+            - Writes timestamped capture logs to `config/addons/tTimers/logs/`.
+
+            Capture logs include character name, level, INT, base Blue Magic skill, and equipped item IDs at cast time.
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

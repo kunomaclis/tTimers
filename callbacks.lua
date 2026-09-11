@@ -25,12 +25,14 @@ local ffi = require('ffi');
 local config        = require('config');
 local customTracker = require('trackers.custom');
 local dummyTracker  = require('trackers.dummy');
+local debuffTracker = require('trackers.debuff');
 local trackers      = T{
     { Name='Buff',   Tracker=require('trackers.buff') },
-    { Name='Debuff', Tracker=require('trackers.debuff') },
+    { Name='Debuff', Tracker=debuffTracker },
     { Name='Recast', Tracker=require('trackers.recast') },
     { Name='Custom',  Tracker=customTracker },
 }
+Message('BLU debug capture build v10 loaded.');
 
 local sprite = ffi.new('ID3DXSprite*[1]');
 if (ffi.C.D3DXCreateSprite(d3d.get_device(), sprite) == ffi.C.S_OK) then
@@ -175,11 +177,26 @@ ashita.events.register('command', 'command_cb', function (e)
             return;
         end
 
+        if (string.lower(args[2]) == 'bludebug') then
+            local success, enabled, path = pcall(debuffTracker.ToggleBlueDebug, debuffTracker);
+            if not success then
+                Error(string.format('BLU debug capture failed: $H%s', tostring(enabled)));
+            elseif enabled == nil then
+                Error(string.format('Unable to open the BLU debug log: $H%s', tostring(path)));
+            elseif enabled then
+                Message(string.format('BLU debug capture started: $H%s', path));
+            else
+                Message(string.format('BLU debug capture stopped: $H%s', path));
+            end
+            return;
+        end
+
         print(chat.header('tTimers') .. chat.message('Command Descriptions:'));
         print(chat.header('tTimers') .. chat.color1(2, '/tt') .. chat.message(' - Opens configuration menu.'));
         print(chat.header('tTimers') .. chat.color1(2, '/tt reposition') .. chat.message(' - Starts reposition mode, which shows debug timers to fill all panels and provides draggable handles to move them.'));
         print(chat.header('tTimers') .. chat.color1(2, '/tt lock') .. chat.message(' - Ends repositioning mode and saves positions for the current character.'));
         print(chat.header('tTimers') .. chat.color1(2, '/tt custom [label] [duration]') .. chat.message(' - Adds a custom timer.  Duration can be specified in number of seconds or using s,m, or h suffixes with or without decimal places(30m, 1h, 10.5m, etc).'));
         print(chat.header('tTimers') .. chat.color1(2, '/tt stop [label]') .. chat.message(' - Deletes a custom timer.'));
+        print(chat.header('tTimers') .. chat.color1(2, '/tt bludebug') .. chat.message(' - Starts or stops Blue Magic packet capture.'));
     end
 end);
