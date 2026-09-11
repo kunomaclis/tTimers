@@ -237,6 +237,11 @@ local function Initialize(tracker, buffer)
         return 30, 147, true;
     end
 
+    --Filamented Hold
+    buffer[548] = function(targetId)
+        return 90, 13;
+    end
+
     buffer[561] = function(targetId)
         return 180, 149;
     end
@@ -261,6 +266,11 @@ local function Initialize(tracker, buffer)
         return 180, 13, true;
     end
 
+    --Soporific
+    buffer[598] = function(targetId)
+        return 90, 2;
+    end
+
     buffer[599] = function(targetId)
         return 90, 3, true;
     end
@@ -273,6 +283,16 @@ local function Initialize(tracker, buffer)
         return 30, 136;
     end
 
+    --Infrasonics
+    buffer[610] = function(targetId)
+        return 60, 148;
+    end
+
+    --Disseverment
+    buffer[611] = function(targetId)
+        return 180, 3, true;
+    end
+
     buffer[620] = function(targetId)
         return 60, 137, true;
     end
@@ -283,6 +303,11 @@ local function Initialize(tracker, buffer)
 
     buffer[638] = function(targetId)
         return 180, 3, true;
+    end
+
+    --Mind Blast
+    buffer[644] = function(targetId)
+        return 90, 4, true;
     end
 
     --[[DEBUFFS : Many are not clear on land or not from packet, others lack data.  Filled in the ones wiki knew.
