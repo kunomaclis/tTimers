@@ -57,6 +57,10 @@ Starts or stops Blue Magic packet capture and opt-in experimental Blue Magic tim
 ## Blue Magic Debug Capture
 Want to help improve Blue Magic timers?
 
+![Experimental Head Butt and confirmed Awful Eye timers](docs/images/blu-timers.png)
+
+Experimental timers begin with **~**. Confirmed timers do not.
+
 1. Run **/ttblu bludebug** when you start playing.
 2. Cast Blue Magic normally. Using `/check` on test targets helps.
 3. Run **/ttblu bludebug** again before quitting.
