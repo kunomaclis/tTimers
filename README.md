@@ -64,13 +64,16 @@ Both kinds end early if the game reports the effect wearing off or the target di
 
 Wild Oats, Sprout Smack, Pinecone Bomb, Queasyshroom, Feather Storm, and Battle Dance last longer when cast with Chain Affinity and more TP, or with Azure Lore. Estimated timers account for this.
 
-## Attribution
-- Thorny — original author
-- [Kunomaclis](https://github.com/kunomaclis) — fork maintainer, stability work, and Blue Magic tracking
-- Original addon: [ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers)
-- License: [MIT](LICENSE)
+## Project lineage and credits
+- tTimers was created by Thorny ([ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers)).
+- Text rendering uses Thorny's [gdifonts](https://github.com/ThornyFFXI/gdifonts).
+- Blue Magic durations and effects are based on spell scripts from [LandSandBoat](https://github.com/LandSandBoat/server).
+- Continued maintenance, stability hardening, and Blue Magic tracking in this fork are directed and tested by [Kunomaclis](https://github.com/kunomaclis/tTimers).
+- Thanks to the Ashita development community.
+- Licensed under [MIT](LICENSE).
 
-Development of this fork included AI-assisted analysis and implementation. Changes were reviewed and playtested by the maintainer.
+## AI-assisted development disclosure
+AI-assisted tools have been used for investigation, implementation support, and code review in this fork, including reading LandSandBoat scripts to derive Blue Magic durations. Kunomaclis directs the design, reviews the changes, and performs the in-game validation. Project decisions and maintenance responsibility remain with the maintainer.
 
 ## Other
 You can shift-click any timer to make it immediately disappear.  You can ctrl-click any timer to make it immediately disappear and block that ability/buff/debuff from generating new timers in the future.  A future update will allow unblocking through GUI, but currently unblocking must be done by unloading the addon, editing the config file, and reloading the addon.  So, try not to block anything you don't want to keep blocked.
