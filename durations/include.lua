@@ -28,6 +28,7 @@ local mobAbilityCalculators = {};
 local petAbilityCalculators = {};
 local spellCalculators = {};
 local weaponSkillCalculators = {};
+local castStartHandlers = T{};
 
 do
     local calculators = T{
@@ -44,7 +45,7 @@ do
         { file='weaponskills.lua', buffer=weaponSkillCalculators },
     };
     for _,calculator in ipairs(calculators) do
-        dofile(string.gsub(thisFile, 'include.lua', calculator.file))(dataTracker, calculator.buffer);
+        dofile(string.gsub(thisFile, 'include.lua', calculator.file))(dataTracker, calculator.buffer, castStartHandlers);
     end
 end
 
@@ -52,6 +53,12 @@ local exports = {};
 
 function exports:GetDataTracker()
     return dataTracker;
+end
+
+function exports:HandleCastStart(spellId)
+    for _,handler in ipairs(castStartHandlers) do
+        handler(spellId);
+    end
 end
 
 function exports:GetAbilityDuration(actionId, targetId)

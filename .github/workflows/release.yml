@@ -22,24 +22,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p "dist/tTimersBlu"
+          mkdir -p "dist/tTimers"
           
           rsync -a --delete \
             --exclude ".git" \
             --exclude ".gitmodules" \
             --exclude ".github" \
             --exclude "dist" \
-            ./ "dist/tTimersBlu/"
+            ./ "dist/tTimers/"
 
           echo "Staged contents:"
-          ls -la "dist/tTimersBlu"
+          ls -la "dist/tTimers"
 
       - name: Zip it
         run: |
           set -euo pipefail
           cd dist
-          ZIP_NAME="tTimersBlu-${GITHUB_REF_NAME}.zip"
-          zip -r "${ZIP_NAME}" "tTimersBlu"
+          ZIP_NAME="tTimers-${GITHUB_REF_NAME}.zip"
+          zip -r "${ZIP_NAME}" "tTimers"
           echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
 
       - name: Create/Update GitHub Release and upload asset
@@ -48,21 +48,17 @@ jobs:
           files: dist/${{ env.ZIP_NAME }}
           body: |
             ## Install
-            Download `tTimersBlu-${{ github.ref_name }}.zip` below. Do not use "Source code (zip)" because it does not include the required gdifonts submodule.
+            Download `tTimers-${{ github.ref_name }}.zip` below. Do not use "Source code (zip)" because it does not include the required gdifonts submodule.
 
-            1. Unzip `tTimersBlu` into your Ashita `addons` folder.
-            2. Optional: copy `config/addons/tTimers` and rename the copy `tTimersBlu` to keep your current settings.
-            3. If tTimers starts automatically, check `scripts/default.txt` for `/addon load tTimers`. Remove that line if you do not want both addons loaded.
-            4. In game, run `/addon load tTimersBlu`.
+            1. Unzip `tTimers` into your Ashita `addons` folder, replacing any existing `tTimers` folder.
+            2. In game, run `/addon reload tTimers`.
 
-            Use `/ttblu` for tTimersBlu commands. Both addons also accept `/tt`.
+            Your existing tTimers settings carry over.
 
             ## Blue Magic
-            Confirmed timers are always active. Experimental `~` timers and logging are active only while `/ttblu bludebug` is running.
+            Confirmed Blue Magic timers are always on. Estimated `~` timers for silent added effects are shown only with `/tt blumode`.
 
-            Logs are saved to `config/addons/tTimersBlu/logs/` and include character name, level, INT, Blue Magic skill, and equipped item IDs.
-
-            tTimersBlu is a HorizonXI-specific fork of [ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers), originally created by Thorny.
+            This is a fork of [ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers), originally created by Thorny.
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

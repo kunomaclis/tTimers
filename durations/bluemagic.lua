@@ -73,8 +73,33 @@ local function CalculateBlueMagicDuration(duration, diffusion, unbridled)
     return duration;
 end
 
-local function Initialize(tracker, buffer)
+--TP only scales these durations while Chain Affinity is active, so both are captured when the cast begins.
+local blueCast = {};
+local function CalculateTpDuration(spellId, baseDuration, duration1500, duration3000, azureDuration)
+    if (blueCast.SpellId == spellId) and ((os.clock() - blueCast.Time) < 30) then
+        if blueCast.AzureLore then
+            return azureDuration;
+        elseif blueCast.ChainAffinity then
+            local tp = math.min(math.max(blueCast.TP, 0), 3000);
+            if (tp >= 1500) then
+                return duration1500 + ((duration3000 - duration1500) * (tp - 1500) / 1500);
+            end
+            return baseDuration + ((duration1500 - baseDuration) * tp / 1500);
+        end
+    end
+    return baseDuration;
+end
+
+local function Initialize(tracker, buffer, castStartHandlers)
     dataTracker = tracker;
+
+    castStartHandlers:append(function(spellId)
+        blueCast.SpellId = spellId;
+        blueCast.Time = os.clock();
+        blueCast.TP = AshitaCore:GetMemoryManager():GetParty():GetMemberTP(0);
+        blueCast.ChainAffinity = dataTracker:GetBuffActive(164);
+        blueCast.AzureLore = dataTracker:GetBuffActive(163);
+    end);
 
     --Metallic Body
     buffer[517] = function(targetId)
@@ -221,20 +246,20 @@ local function Initialize(tracker, buffer)
         return CalculateBlueMagicDuration(180, true, true), 604;        
     end
 
-    buffer[531] = function(targetId)
-        return 30, 11, true;
+    --Debuffs the server reports in the action packet.
+    --Venom Shell
+    buffer[513] = function(targetId)
+        return 60, 3;
     end
 
-    buffer[536] = function(targetId)
-        return 60, 3, true;
+    --Cold Wave
+    buffer[535] = function(targetId)
+        return 60, 129;
     end
 
+    --Stinking Gas
     buffer[537] = function(targetId)
         return 60, 138;
-    end
-
-    buffer[539] = function(targetId)
-        return 30, 147, true;
     end
 
     --Filamented Hold
@@ -242,28 +267,39 @@ local function Initialize(tracker, buffer)
         return 90, 13;
     end
 
+    --Frightful Roar
     buffer[561] = function(targetId)
         return 180, 149;
     end
 
+    --Sound Blast
     buffer[572] = function(targetId)
         return 30, 140;
     end
 
+    --Jettatura
+    buffer[575] = function(targetId)
+        return 5, 28;
+    end
+
+    --Yawn
+    buffer[576] = function(targetId)
+        return 90, 2;
+    end
+
+    --Chaotic Eye
     buffer[582] = function(targetId)
         return 120, 6;
     end
 
+    --Sheep Song
     buffer[584] = function(targetId)
         return 60, 2;
     end
 
-    buffer[596] = function(targetId)
-        return 90, 2, true;
-    end
-
-    buffer[597] = function(targetId)
-        return 180, 13, true;
+    --Lowing
+    buffer[588] = function(targetId)
+        return 60, 31;
     end
 
     --Soporific
@@ -271,14 +307,7 @@ local function Initialize(tracker, buffer)
         return 90, 2;
     end
 
-    buffer[599] = function(targetId)
-        return 90, 3, true;
-    end
-
-    buffer[603] = function(targetId)
-        return 60, 138, true;
-    end
-
+    --Awful Eye
     buffer[606] = function(targetId)
         return 30, 136;
     end
@@ -288,21 +317,145 @@ local function Initialize(tracker, buffer)
         return 60, 148;
     end
 
+    --Actinic Burst
+    buffer[612] = function(targetId)
+        return 16, 156;
+    end
+
+    --Temporal Shift
+    buffer[616] = function(targetId)
+        return 5, 10;
+    end
+
+    --Sandspray
+    buffer[621] = function(targetId)
+        return 120, 5;
+    end
+
+    --Enervation
+    buffer[633] = function(targetId)
+        return 30, 149;
+    end
+
+    --Light of Penance
+    buffer[634] = function(targetId)
+        return 30, 5;
+    end
+
+    --Added effects land silently, so these are estimates and only shown with /tt blumode.
+    --Maelstrom
+    buffer[515] = function(targetId)
+        return 60, 136, true;
+    end
+
+    --Sandspin
+    buffer[524] = function(targetId)
+        return 60, 146, true;
+    end
+
+    --Ice Break
+    buffer[531] = function(targetId)
+        return 30, 11, true;
+    end
+
+    --Blitzstrahl
+    buffer[532] = function(targetId)
+        return 5, 10, true;
+    end
+
+    --Mysterious Light
+    buffer[534] = function(targetId)
+        return 60, 12, true;
+    end
+
+    --Poison Breath
+    buffer[536] = function(targetId)
+        return 60, 3, true;
+    end
+
+    --Terror Touch
+    buffer[539] = function(targetId)
+        return 60, 147, true;
+    end
+
+    --Magnetite Cloud
+    buffer[555] = function(targetId)
+        return 60, 12, true;
+    end
+
+    --Hecatomb Wave
+    buffer[563] = function(targetId)
+        return 60, 5, true;
+    end
+
+    --Radiant Breath
+    buffer[565] = function(targetId)
+        return 60, 13, true;
+    end
+
+    --Pinecone Bomb
+    buffer[596] = function(targetId)
+        return CalculateTpDuration(596, 90, 150, 210, 240), 2, true;
+    end
+
+    --Sprout Smack
+    buffer[597] = function(targetId)
+        return CalculateTpDuration(597, 180, 360, 400, 450), 13, true;
+    end
+
+    --Queasyshroom
+    buffer[599] = function(targetId)
+        return CalculateTpDuration(599, 90, 150, 180, 210), 3, true;
+    end
+
+    --Wild Oats
+    buffer[603] = function(targetId)
+        return CalculateTpDuration(603, 180, 360, 400, 450), 138, true;
+    end
+
+    --Bad Breath
+    buffer[604] = function(targetId)
+        return 60, 13, true;
+    end
+
+    --Frost Breath
+    buffer[608] = function(targetId)
+        return 60, 4, true;
+    end
+
     --Disseverment
     buffer[611] = function(targetId)
         return 180, 3, true;
     end
 
-    buffer[620] = function(targetId)
-        return 60, 137, true;
+    --Blastbomb
+    buffer[618] = function(targetId)
+        return 30, 11, true;
     end
 
+    --Battle Dance
+    buffer[620] = function(targetId)
+        return CalculateTpDuration(620, 90, 480, 680, 800), 137, true;
+    end
+
+    --Head Butt
     buffer[623] = function(targetId)
         return 5, 10, true;
     end
 
+    --Frypan
+    buffer[628] = function(targetId)
+        return 5, 10, true;
+    end
+
+    --Feather Storm
     buffer[638] = function(targetId)
-        return 180, 3, true;
+        return CalculateTpDuration(638, 180, 360, 400, 450), 3, true;
+    end
+
+    --Tail Slap
+    buffer[640] = function(targetId)
+        return 5, 10, true;
     end
 
     --Mind Blast
@@ -310,464 +463,30 @@ local function Initialize(tracker, buffer)
         return 90, 4, true;
     end
 
-    --[[DEBUFFS : Many are not clear on land or not from packet, others lack data.  Filled in the ones wiki knew.
-    Left this commented by default.
-
-    --Venom Shell
-	buffer[513] = function(targetId)
-		return 0;
-	end
-
-	--Maelstrom
-	buffer[515] = function(targetId)
-		return 0;
-	end
-
-	--Sandspin
-	buffer[524] = function(targetId)
-		return 0;
-	end
-
-	--Ice Break
-	buffer[531] = function(targetId)
-		return 0;
-	end
-
-	--Blitzstrahl
-	buffer[532] = function(targetId)
-		return 0;
-	end
-
-	--Mysterious Light
-	buffer[534] = function(targetId)
-		return 0;
-	end
-
-	--Cold Wave
-	buffer[535] = function(targetId)
-		return 0;
-	end
-
-	--Poison Breath
-	buffer[536] = function(targetId)
-		return 30;
-	end
-
-	--Stinking Gas
-	buffer[537] = function(targetId)
-		return 60;
-	end
-
-	--Terror Touch
-	buffer[539] = function(targetId)
-		return 60;
-	end
-
-	--Filamented Hold
-	buffer[548] = function(targetId)
-		return 90;
-	end
-
-	--Magnetite Cloud
-	buffer[555] = function(targetId)
-		return 0;
-	end
-
-	--Frightful Roar
-	buffer[561] = function(targetId)
-		return 180;
-	end
-
-	--Hecatomb Wave
-	buffer[563] = function(targetId)
-		return 0;
-	end
-
-	--Radiant Breath
-	buffer[565] = function(targetId)
-		return 90;
-	end
-
-	--Sound Blast
-	buffer[572] = function(targetId)
-		return 30;
-	end
-
-	--Feather Tickle
-	buffer[573] = function(targetId)
-		return 0;
-	end
-
-	--Jettatura
-	buffer[575] = function(targetId)
-		return 0;
-	end
-
-	--Yawn
-	buffer[576] = function(targetId)
-		return 0;
-	end
-
-	--Chaotic Eye
-	buffer[582] = function(targetId)
-		return 0;
-	end
-
-	--Sheep Song
-	buffer[584] = function(targetId)
-		return 0;
-	end
-
-	--Lowing
-	buffer[588] = function(targetId)
-		return 0;
-	end
-
-	--Pinecone Bomb
-	buffer[596] = function(targetId)
-		return 0;
-	end
-
-	--Sprout Smack
-	buffer[597] = function(targetId)
-		return 0;
-	end
-
-	--Soporific
-	buffer[598] = function(targetId)
-		return 90;
-	end
-
-	--Queasyshroom
-	buffer[599] = function(targetId)
-		return 0;
-	end
-
-	--Wild Oats
-	buffer[603] = function(targetId)
-		return 0;
-	end
-
-	--Bad Breath
-	buffer[604] = function(targetId)
-		return 0;
-	end
-
-	--Awful Eye
-	buffer[606] = function(targetId)
-		return 30;
-	end
-
-	--Frost Breath
-	buffer[608] = function(targetId)
-		return 180;
-	end
-
-	--Infrasonics
-	buffer[610] = function(targetId)
-		return 60;
-	end
-
-	--Disseverment
-	buffer[611] = function(targetId)
-		return 180;
-	end
-
-	--Actinic Burst
-	buffer[612] = function(targetId)
-		return 0;
-	end
-
-	--Temporal Shift
-	buffer[616] = function(targetId)
-		return 0;
-	end
-
-	--Blastbomb
-	buffer[618] = function(targetId)
-		return 0;
-	end
-
-	--Battle Dance
-	buffer[620] = function(targetId)
-		return 0;
-	end
-
-	--Sandspray
-	buffer[621] = function(targetId)
-		return 0;
-	end
-
-	--Head Butt
-	buffer[623] = function(targetId)
-		return 0;
-	end
-
-	--Frypan
-	buffer[628] = function(targetId)
-		return 0;
-	end
-
-	--Hydro Shot
-	buffer[631] = function(targetId)
-		return 0;
-	end
-
-	--Enervation
-	buffer[633] = function(targetId)
-		return 30;
-	end
-
-	--Light of Penance
-	buffer[634] = function(targetId)
-		return 30;
-	end
-
-	--Feather Storm
-	buffer[638] = function(targetId)
-		return 0;
-	end
-
-	--Tail Slap
-	buffer[640] = function(targetId)
-		return 0;
-	end
-
-	--Mind Blast
-	buffer[644] = function(targetId)
-		return 90;
-	end
-
-	--Regurgitation
-	buffer[648] = function(targetId)
-		return 0;
-	end
-
-	--Seedspray
-	buffer[650] = function(targetId)
-		return 0;
-	end
-
-	--Corrosive Ooze
-	buffer[651] = function(targetId)
-		return 0;
-	end
-
-	--Spiral Spin
-	buffer[652] = function(targetId)
-		return 0;
-	end
-
-	--Sub-zero Smash
-	buffer[654] = function(targetId)
-		return 180;
-	end
-
-	--Acrid Stream
-	buffer[656] = function(targetId)
-		return 120;
-	end
-
-	--Demoralizing Roar
-	buffer[659] = function(targetId)
-		return 30;
-	end
-
-	--Cimicine Discharge
-	buffer[660] = function(targetId)
-		return 90;
-	end
-
-	--Whirl of Rage
-	buffer[669] = function(targetId)
-		return 0;
-	end
-
-	--Benthic Typhoon
-	buffer[670] = function(targetId)
-		return 60;
-	end
-
-	--Auroral Drape
-	buffer[671] = function(targetId)
-		return 0;
-	end
-
-	--Thermal Pulse
-	buffer[675] = function(targetId)
-		return 0;
-	end
-    
-	--Dream Flower
-	buffer[678] = function(targetId)
-		return 0;
-	end
-
-	--Delta Thrust
-	buffer[682] = function(targetId)
-		return 0;
-	end
-
-	--Mortal Ray
-	buffer[686] = function(targetId)
-		return 63;
-	end
-
-	--Water Bomb
-	buffer[687] = function(targetId)
-		return 0;
-	end
-
-	--Sudden Lunge
-	buffer[692] = function(targetId)
-		return 0;
-	end
-
-	--Barbed Crescent
-	buffer[699] = function(targetId)
-		return 120;
-	end
-
-	--Embalming Earth
-	buffer[703] = function(targetId)
-		return 180;
-	end
-
-	--Paralyzing Triad
-	buffer[704] = function(targetId)
-		return 60;
-	end
-
-	--Foul Waters
-	buffer[705] = function(targetId)
-		return 180;
-	end
-
-	--Retinal Glare
-	buffer[707] = function(targetId)
-		return 15;
-	end
-
-	--Subduction
-	buffer[708] = function(targetId)
-		return 90;
-	end
-
-	--Nectarous Deluge
-	buffer[716] = function(targetId)
-		return 0;
-	end
-
-	--Sweeping Gouge
-	buffer[717] = function(targetId)
-		return 90;
-	end
-
-	--Searing Tempest
-	buffer[719] = function(targetId)
-		return 0;
-	end
-
-	--Spectral Floe
-	buffer[720] = function(targetId)
-		return 0;
-	end
-
-	--Anvil Lightning
-	buffer[721] = function(targetId)
-		return 0;
-	end
-
-	--Entomb
-	buffer[722] = function(targetId)
-		return 0;
-	end
-
-	--Saurian Slide
-	buffer[723] = function(targetId)
-		return 0;
-	end
-
-	--Palling Salvo
-	buffer[724] = function(targetId)
-		return 0;
-	end
-
-	--Blinding Fulgor
-	buffer[725] = function(targetId)
-		return 0;
-	end
-
-	--Scouring Spate
-	buffer[726] = function(targetId)
-		return 0;
-	end
-
-	--Silent Storm
-	buffer[727] = function(targetId)
-		return 0;
-	end
-
-	--Tenebral Crush
-	buffer[728] = function(targetId)
-		return 180;
-	end
-
-	--Thunderbolt
-	buffer[736] = function(targetId)
-		return 0;
-	end
-
-	--Absolute Terror
-	buffer[738] = function(targetId)
-		return 0;
-	end
-
-	--Gates of Hades
-	buffer[739] = function(targetId)
-		return 90;
-	end
-
-	--Tourbillion
-	buffer[740] = function(targetId)
-		return 0;
-	end
-
-	--Bilgestorm
-	buffer[742] = function(targetId)
-		return 0;
-	end
-
-	--Bloodrake
-	buffer[743] = function(targetId)
-		return 0;
-	end
-
-	--Blistering Roar
-	buffer[746] = function(targetId)
-		return 0;
-	end
-
-	--Polar Roar
-	buffer[749] = function(targetId)
-		return 0;
-	end
-
-	--Cruel Joke
-	buffer[751] = function(targetId)
-		return 60;
-	end
-
-	--Cesspool
-	buffer[752] = function(targetId)
-		return 60;
-	end
-
-	--Tearing Gust
-	buffer[753] = function(targetId)
-		return 60;
-	end
-    ]]--
+    --Regurgitation
+    buffer[648] = function(targetId)
+        return 30, 11, true;
+    end
+
+    --Seedspray
+    buffer[650] = function(targetId)
+        return 120, 149, true;
+    end
+
+    --Corrosive Ooze
+    buffer[651] = function(targetId)
+        return 90, 149, true;
+    end
+
+    --Spiral Spin
+    buffer[652] = function(targetId)
+        return 60, 146, true;
+    end
+
+    --Sub-zero Smash
+    buffer[654] = function(targetId)
+        return 180, 4, true;
+    end
 end
 
 return Initialize;

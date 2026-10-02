@@ -188,6 +188,15 @@ end
 function renderer:Destroy()
 end
 
+function renderer:Prewarm()
+    for _,layout in ipairs({ self.Skin.Label, self.Skin.ToolTip }) do
+        local fontObject = gdi:create_object(layout, true);
+        fontObject:set_font_height(math.floor((layout.font_height * self.Settings.Scale) + 0.5));
+        fontObject:set_text('~Prewarm[Target] 00:00');
+        fontObject:get_texture();
+    end
+end
+
 function renderer:Begin()
 end
 

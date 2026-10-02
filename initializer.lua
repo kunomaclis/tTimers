@@ -76,6 +76,7 @@ gDefaultSettings = T{
         SplitByDuration = true,
         TrackMode = 'Self Cast Only',
         ShowMobIndex = true,
+        BluMode = false,
         Blocked = T{
             --Add reasonable defaults..
         },

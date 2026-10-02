@@ -278,6 +278,10 @@ function config:Render()
                         settings.save();
                     end
                     imgui.ShowHelp('If enabled, debuffs will include mob index in the target name.  Changes will not apply to existing timers.');
+                    if (imgui.Checkbox('Blue Magic Estimates##tTimersConfigDebuffs_BluMode', { gSettings.Debuff.BluMode })) then
+                        require('trackers.debuff'):ToggleBluMode();
+                    end
+                    imgui.ShowHelp('If enabled, Blue Magic added effects that land silently will show estimated timers beginning with ~.  Same as /tt blumode.');
                     if (imgui.Checkbox('Update Custom##tTimersConfigCustom_UpdateCustom', {gSettings.Custom.UpdateCustom})) then
                         gSettings.Custom.UpdateCustom = not gSettings.Custom.UpdateCustom;
                         settings.save();
