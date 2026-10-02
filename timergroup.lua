@@ -203,6 +203,12 @@ function TimerGroup:RenderTooltip(sprite)
     end
 end
 
+function TimerGroup:Prewarm()
+    if (self.TimerRenderer ~= nil) and (type(self.TimerRenderer.Prewarm) == 'function') then
+        self.TimerRenderer:Prewarm();
+    end
+end
+
 function TimerGroup:UpdateSettings(newSettings, force)
     if (self.Settings.Renderer ~= newSettings.Renderer) or (force == true) or (self.TimerRenderer == nil) then
         if (self.TimerRenderer ~= nil) then

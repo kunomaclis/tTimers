@@ -41,7 +41,32 @@ else
     Error('Failed to create sprite.');
 end
 
+local prewarmStatuses = T{ 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 28, 31, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 146, 147, 148, 149, 156, 167 };
+local prewarmSteps;
+local function RunPrewarmStep()
+    if (prewarmSteps == nil) then
+        --Status icon lookups are negative-cached, so they must wait until the client has loaded a character.
+        local party = AshitaCore:GetMemoryManager():GetParty();
+        if (party:GetMemberIsActive(0) == 0) or (party:GetMemberServerId(0) == 0) then
+            return;
+        end
+        prewarmSteps = T{};
+        for _,name in ipairs(T{ 'Debuff', 'Buff', 'Recast', 'Custom' }) do
+            prewarmSteps:append(function() gPanels[name]:Prewarm(); end);
+        end
+        for _,statusId in ipairs(prewarmStatuses) do
+            prewarmSteps:append(function() gTextureCache:GetTexture(string.format('STATUS:%u', statusId)); end);
+        end
+    end
+
+    local step = table.remove(prewarmSteps, 1);
+    if step then
+        step();
+    end
+end
+
 ashita.events.register('d3d_present', 'd3d_present_cb', function ()
+    RunPrewarmStep();
     config:Render();
     if (sprite == nil) or ((gSettings.HideWithPrimitives == true) and (AshitaCore:GetPrimitiveManager():GetVisible() == false)) then
         return;
@@ -76,7 +101,7 @@ ashita.events.register('command', 'command_cb', function (e)
         return;
     end
     local command = string.lower(args[1]);
-    if (command ~= '/tt') and (command ~= '/ttblu') then
+    if (command ~= '/tt') then
         return;
     end
     e.blocked = true;
@@ -180,26 +205,21 @@ ashita.events.register('command', 'command_cb', function (e)
             return;
         end
 
-        if (string.lower(args[2]) == 'bludebug') then
-            local success, enabled, path = pcall(debuffTracker.ToggleBlueDebug, debuffTracker);
-            if not success then
-                Error(string.format('BLU debug capture failed: $H%s', tostring(enabled)));
-            elseif enabled == nil then
-                Error(string.format('Unable to open the BLU debug log: $H%s', tostring(path)));
-            elseif enabled then
-                Message(string.format('BLU debug capture started: $H%s', path));
+        if (string.lower(args[2]) == 'blumode') then
+            if debuffTracker:ToggleBluMode() then
+                Message('Blue Magic estimates $Henabled$R. Timers beginning with ~ are estimates.');
             else
-                Message(string.format('BLU debug capture stopped: $H%s', path));
+                Message('Blue Magic estimates $Hdisabled$R.');
             end
             return;
         end
 
         print(chat.header(addon.name) .. chat.message('Command Descriptions:'));
-        print(chat.header(addon.name) .. chat.color1(2, '/ttblu') .. chat.message(' - Opens configuration menu.'));
-        print(chat.header(addon.name) .. chat.color1(2, '/ttblu reposition') .. chat.message(' - Starts reposition mode, which shows debug timers to fill all panels and provides draggable handles to move them.'));
-        print(chat.header(addon.name) .. chat.color1(2, '/ttblu lock') .. chat.message(' - Ends repositioning mode and saves positions for the current character.'));
-        print(chat.header(addon.name) .. chat.color1(2, '/ttblu custom [label] [duration]') .. chat.message(' - Adds a custom timer.  Duration can be specified in number of seconds or using s,m, or h suffixes with or without decimal places(30m, 1h, 10.5m, etc).'));
-        print(chat.header(addon.name) .. chat.color1(2, '/ttblu stop [label]') .. chat.message(' - Deletes a custom timer.'));
-        print(chat.header(addon.name) .. chat.color1(2, '/ttblu bludebug') .. chat.message(' - Starts or stops Blue Magic packet capture.'));
+        print(chat.header(addon.name) .. chat.color1(2, '/tt') .. chat.message(' - Opens configuration menu.'));
+        print(chat.header(addon.name) .. chat.color1(2, '/tt reposition') .. chat.message(' - Starts reposition mode, which shows debug timers to fill all panels and provides draggable handles to move them.'));
+        print(chat.header(addon.name) .. chat.color1(2, '/tt lock') .. chat.message(' - Ends repositioning mode and saves positions for the current character.'));
+        print(chat.header(addon.name) .. chat.color1(2, '/tt custom [label] [duration]') .. chat.message(' - Adds a custom timer.  Duration can be specified in number of seconds or using s,m, or h suffixes with or without decimal places(30m, 1h, 10.5m, etc).'));
+        print(chat.header(addon.name) .. chat.color1(2, '/tt stop [label]') .. chat.message(' - Deletes a custom timer.'));
+        print(chat.header(addon.name) .. chat.color1(2, '/tt blumode') .. chat.message(' - Toggles estimated timers for Blue Magic added effects.'));
     end
 end);
