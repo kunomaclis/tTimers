@@ -1,96 +1,45 @@
-# tTimersBlu
-Displays time remaining on buffs and debuffs you've cast, as well as the recast timers for your spells and abilities.
+# tTimers
+Shows how long your buffs and debuffs have left, plus recast timers for your spells and abilities.
 
-## HorizonXI Fork — Version 0.26
-tTimersBlu is a separately installable HorizonXI fork of [ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers). It adds renderer stability fixes and opt-in Blue Magic debuff tracking while preserving Thorny's original authorship and MIT license.
+This is a fork of [ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers) for Ashita v4. It adds stability fixes and optional Blue Magic debuff timers for LandSandBoat servers, tested on Phoenix XI.
 
-## Installation
-### Users
-Download the named `tTimersBlu-v*.zip` asset from the [Releases page](https://github.com/kunomaclis/tTimers/releases). Do not use GitHub's **Download ZIP** or **Source code (zip)** because those archives do not include the required `gdifonts` submodule.
+## Install
+1. Download `tTimers-v*.zip` from the [Releases page](https://github.com/kunomaclis/tTimers/releases). GitHub's **Source code** zips won't work because they're missing the `gdifonts` folder.
+2. Unzip `tTimers` into your Ashita `addons` folder, replacing any existing `tTimers` folder.
+3. In game, run `/addon reload tTimers` (or `/addon load tTimers`).
 
-1. Unzip `tTimersBlu` into your Ashita `addons` folder.
-2. Optional: copy `config/addons/tTimers` and rename the copy `tTimersBlu` to keep your current settings.
-3. If tTimers starts automatically, check `scripts/default.txt` for `/addon load tTimers`. Remove that line if you do not want both addons loaded.
-4. In game, run `/addon load tTimersBlu`.
+Your existing tTimers settings carry over. If you used tTimersBlu, unload it and delete its folder; its settings don't carry over.
 
-Use `/ttblu` for tTimersBlu commands. Both addons also accept `/tt`.
-
-### Developers
-Clone the repository with its submodule:
-
-```bash
-git clone --recursive https://github.com/kunomaclis/tTimers.git tTimersBlu
-cd tTimersBlu
-git config submodule.recurse true
-```
-
-For an existing clone with an empty `gdifonts` directory:
-
-```bash
-git submodule update --init --recursive
-```
+Developers: clone with `git clone --recursive https://github.com/kunomaclis/tTimers.git`, or run `git submodule update --init --recursive` in an existing clone.
 
 ## Commands
+| Command | What it does |
+| --- | --- |
+| `/tt` | Opens the settings menu. |
+| `/tt reposition` | Shows every panel so you can drag it into place. |
+| `/tt lock` | Saves panel positions and ends reposition mode. |
+| `/tt custom "Label" 5m` | Adds a custom timer. Use `s`, `m`, or `h` (seconds if no suffix), or a clock time like `17:13:20`. |
+| `/tt stop "Label"` | Removes a custom timer. |
+| `/tt blumode` | Turns estimated Blue Magic timers on or off. |
 
-**/ttblu**<br>
-Opens configuration menu.  This allows you to change themes, alter behavior, etc.
+Shift-click a timer to dismiss it. Ctrl-click to dismiss it and block it from coming back. Unblock it from the **Blocked** tab in `/tt`.
 
-**/ttblu reposition**<br>
-Forces all timer panels visible with max allowed timers, and allows them to be dragged around using the handles.  Bottom justified panels will have a red handle, and top justified panels will have a blue handle.  There is an overlapping area in the default layout allowing you to drag both together by clicking the overlap.
+## Blue Magic
+![Estimated Head Butt and confirmed Awful Eye timers](docs/images/blu-timers.png)
 
-**/ttblu lock**<br>
-Ends reposition mode.
+- **Confirmed timers** are always on. These spells tell you when they land, like Sheep Song, Awful Eye, and Frightful Roar.
+- **Estimated timers** start with `~` and are off by default. These spells add their effect silently on hit, like Head Butt, Bad Breath, and Wild Oats, so the timer starts on any hit. Turn them on with `/tt blumode` or the **Blue Magic Estimates** checkbox under Debuffs in `/tt`.
 
-**/ttblu custom [required: Label] [required: Duration]**<br>
-This creates a custom timer with the label and duration specified.  Duration can be specified in full or partial minutes, seconds, or hours by using suffixes s, m, or h.  Example usage:<br>
-**/ttblu custom "PH Repop" 5.5m**<br>
-**/ttblu custom "NM Window" 1h**<br>
-**/ttblu custom "Reminder" 30s**<br>
-If no suffix is used, the timer will use the number as seconds.
+Durations use LandSandBoat's base values for Treasures of Aht Urhgan spells up to level 75. A resist can make the real effect shorter. Timers clear when the effect wears off or the target dies. Estimated timers also clear when you zone.
 
-Enter a specific time in the future in this format HH:MM:SS. Example:
-**/ttblu custom "Timer" 17:13:20**<br>
+Wild Oats, Sprout Smack, Pinecone Bomb, Queasyshroom, Feather Storm, and Battle Dance last longer with Chain Affinity and more TP, or with Azure Lore. Their timers account for this.
 
-**/ttblu bludebug**<br>
-Starts or stops Blue Magic packet capture and opt-in experimental Blue Magic timers.
+## Credits
+- Thorny created [tTimers](https://github.com/ThornyFFXI/tTimers) and [gdifonts](https://github.com/ThornyFFXI/gdifonts).
+- Blue Magic durations come from [LandSandBoat](https://github.com/LandSandBoat/server) spell scripts.
+- [Kunomaclis](https://github.com/kunomaclis/tTimers) maintains and tests this fork.
+- Thanks to the Ashita development community.
+- Licensed under [MIT](LICENSE).
 
-## Blue Magic Debug Capture
-Want to help improve Blue Magic timers?
-
-![Experimental Head Butt and confirmed Awful Eye timers](docs/images/blu-timers.png)
-
-Experimental timers begin with **~**. Confirmed timers do not.
-
-1. Run **/ttblu bludebug** when you start playing.
-2. Cast Blue Magic normally. Using `/check` on test targets helps.
-3. Run **/ttblu bludebug** again before quitting.
-4. Share the log from `config/addons/tTimersBlu/logs/`.
-
-Capture continues across zones. Timers beginning with **~** are experimental guesses shown only while capture is active.
-
-Shared logs include your character name, level, INT, base Blue Magic skill, and equipped item IDs at cast time.
-
-<details>
-<summary>Example log entries (trimmed)</summary>
-
-```text
-2026-09-10 18:00:00 +0.001 START addon_version=0.26 capture_version=10
-2026-09-10 18:00:08 +8.125 REQUEST cast_id=1 spell=603 spell_name="Wild Oats" target_name="Example Mob" player_level=62 player_int=52 blue_magic_skill_base=212 equipment="00:16557,..."
-2026-09-10 18:00:09 +9.010 CANDIDATE cast_id=1 spell=603 spell_name="Wild Oats" target_name="Example Mob" expected_status=138 status_name="VIT Down"
-2026-09-10 18:01:09 +69.250 DURATION confidence=candidate cast_id=1 spell=603 spell_name="Wild Oats" target_name="Example Mob" status=138 status_name="VIT Down" seconds=60.240
-```
-
-</details>
-
-The `/tt` command remains available as a compatibility alias.
-
-## Attribution
-- Thorny — original author
-- [Kunomaclis](https://github.com/kunomaclis) — fork maintainer, stability work, and HorizonXI Blue Magic tracking
-- Original addon: [ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers)
-- License: [MIT](LICENSE)
-
-Development of this fork included AI-assisted analysis and implementation. Changes were reviewed and playtested by the maintainer.
-
-## Other
-You can shift-click any timer to make it immediately disappear.  You can ctrl-click any timer to make it immediately disappear and block that ability/buff/debuff from generating new timers in the future.  A future update will allow unblocking through GUI, but currently unblocking must be done by unloading the addon, editing the config file, and reloading the addon.  So, try not to block anything you don't want to keep blocked.
+## AI-assisted development disclosure
+AI-assisted tools were used in this fork for investigation, implementation support, and code review, including reading LandSandBoat scripts to derive Blue Magic durations. Kunomaclis directs the design, reviews every change, and tests it in game. Project decisions and maintenance responsibility remain with the maintainer.
