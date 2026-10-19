@@ -48,17 +48,17 @@ jobs:
           files: dist/${{ env.ZIP_NAME }}
           body: |
             ## Install
-            Download `tTimers-${{ github.ref_name }}.zip` below. Do not use "Source code (zip)" because it does not include the required gdifonts submodule.
+            Download `tTimers-${{ github.ref_name }}.zip` below. The "Source code" zips won't work because they're missing the gdifonts folder.
 
             1. Unzip `tTimers` into your Ashita `addons` folder, replacing any existing `tTimers` folder.
             2. In game, run `/addon reload tTimers`.
 
-            Your existing tTimers settings carry over.
+            Your existing tTimers settings carry over. If you used tTimersBlu, unload it and delete its folder.
 
             ## Blue Magic
-            Confirmed Blue Magic timers are always on. Estimated `~` timers for silent added effects are shown only with `/tt blumode`.
+            Confirmed Blue Magic timers are always on. Estimated `~` timers are off by default; turn them on with `/tt blumode` or the Blue Magic Estimates checkbox in `/tt`.
 
-            This is a fork of [ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers), originally created by Thorny.
+            This is a fork of [ThornyFFXI/tTimers](https://github.com/ThornyFFXI/tTimers), created by Thorny. AI-assisted tools were used in development; Kunomaclis reviews and tests every change.
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
